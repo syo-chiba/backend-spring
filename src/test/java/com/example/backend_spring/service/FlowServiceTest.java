@@ -88,15 +88,21 @@ class FlowServiceTest {
         FlowStep next = new FlowStep(20L, 2, "B");
 
         StepCandidate candidate = new StepCandidate(1L, LocalDateTime.of(2026, 2, 22, 10, 0), LocalDateTime.of(2026, 2, 22, 11, 0));
+        ReflectionTestUtils.setField(candidate, "id", 99L);
+
+        StepCandidate another = new StepCandidate(1L, LocalDateTime.of(2026, 2, 23, 10, 0), LocalDateTime.of(2026, 2, 23, 11, 0));
+        ReflectionTestUtils.setField(another, "id", 100L);
 
         when(flowRepo.findById(20L)).thenReturn(Optional.of(flow));
         when(stepRepo.findByFlowIdAndStepOrder(20L, 1)).thenReturn(active);
         when(candidateRepo.findById(99L)).thenReturn(Optional.of(candidate));
+        when(candidateRepo.findByFlowStepIdOrderByStartAtAsc(1L)).thenReturn(List.of(candidate, another));
         when(stepRepo.findByFlowIdAndStepOrder(20L, 2)).thenReturn(next);
 
         flowService.selectCandidateForActiveStep(20L, 99L);
 
         assertTrue("SELECTED".equals(candidate.getStatus()));
+        assertTrue("REJECTED".equals(another.getStatus()));
         assertTrue("CONFIRMED".equals(active.getStatus()));
         assertTrue("ACTIVE".equals(next.getStatus()));
 

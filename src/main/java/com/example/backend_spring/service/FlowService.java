@@ -162,6 +162,14 @@ public class FlowService {
         candidate.select();
         active.confirm(candidate.getStartAt(), candidate.getEndAt());
 
+        List<StepCandidate> sameStepCandidates = candidateRepo.findByFlowStepIdOrderByStartAtAsc(active.getId());
+        for (StepCandidate each : sameStepCandidates) {
+            if (!each.getId().equals(candidate.getId()) && "PROPOSED".equals(each.getStatus())) {
+                each.reject();
+                candidateRepo.save(each);
+            }
+        }
+
         stepRepo.save(active);
         candidateRepo.save(candidate);
 
