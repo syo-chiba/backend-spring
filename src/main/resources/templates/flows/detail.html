@@ -115,5 +115,20 @@
   }
 </script>
 
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script th:inline="javascript">
+  const blocked = /*[[${unavailableDates}]]*/ [];
+  const picker = document.getElementById('startAtPicker');
+  if (picker) {
+    flatpickr(picker, {
+        enableTime: true,
+        dateFormat: "Y-m-d\\TH:i",
+        minDate: /*[[${minDate}]]*/ '2026-02-21',
+        maxDate: /*[[${maxDate}]]*/ '2026-05-21',
+        disable: blocked
+    });
+  }
+</script>
+
 </body>
 </html>
