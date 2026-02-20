@@ -1,16 +1,33 @@
 <!doctype html>
-<html>
+<html lang="ja" xmlns:th="http://www.thymeleaf.org">
 	<head>
 	    <meta charset="UTF-8">
 	    <title>フロー一覧</title>
 	</head>
 	<body>
-	
+
 	<h1>フロー一覧</h1>
-	
-	<a href="/flows/new">新規作成</a>
-	
-	<p>※ 一覧表示は次で実装します</p>
-	
+
+	<p><a href="/flows/new">新規作成</a></p>
+
+	<div th:if="${#lists.isEmpty(flows)}">
+		<p>まだフローがありません。</p>
+	</div>
+
+	<table th:if="${!#lists.isEmpty(flows)}" border="1" cellpadding="6">
+		<tr>
+			<th>ID</th>
+			<th>タイトル</th>
+			<th>状態</th>
+			<th>現在ステップ</th>
+		</tr>
+		<tr th:each="flow : ${flows}">
+			<td><a th:href="@{'/flows/' + ${flow.id}}" th:text="${flow.id}">1</a></td>
+			<td th:text="${flow.title}">定例会議</td>
+			<td th:text="${flow.status}">IN_PROGRESS</td>
+			<td th:text="${flow.currentStepOrder}">1</td>
+		</tr>
+	</table>
+
 	</body>
 </html>
