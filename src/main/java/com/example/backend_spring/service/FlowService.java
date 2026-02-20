@@ -3,6 +3,7 @@ package com.example.backend_spring.service;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,7 +28,6 @@ public class FlowService {
         this.candidateRepo = candidateRepo;
     }
 
-    // ===== Flow作成 =====
     @Transactional
     public Long createFlow(String title, int durationMinutes, LocalDateTime startFrom, Long createdByUserId, List<String> participants) {
         Flow flow = new Flow(title, durationMinutes, startFrom, createdByUserId);
@@ -37,11 +37,13 @@ public class FlowService {
         int order = 1;
         for (String p : participants) {
             String name = p == null ? "" : p.trim();
-            if (name.isEmpty()) continue;
+            if (name.isEmpty()) {
+                continue;
+            }
 
             FlowStep step = new FlowStep(saved.getId(), order, name);
             if (order == 1) {
-                step.activate(); // 最初だけACTIVE
+                step.activate();
             }
             steps.add(step);
             order++;
@@ -55,7 +57,10 @@ public class FlowService {
         return saved.getId();
     }
 
-    // ===== 参照系 =====
+    public List<Flow> listFlows() {
+        return flowRepo.findAllByOrderByIdDesc();
+    }
+
     public Flow getFlow(Long id) {
         return flowRepo.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Flow not found: " + id));
@@ -65,32 +70,30 @@ public class FlowService {
         return stepRepo.findByFlowIdOrderByStepOrder(flowId);
     }
 
-    public FlowStep getActiveStep(Long flowId) {
+    public Optional<FlowStep> findActiveStep(Long flowId) {
         Flow flow = getFlow(flowId);
 
         FlowStep step = stepRepo.findByFlowIdAndStepOrder(flowId, flow.getCurrentStepOrder());
-        if (step == null) {
-            throw new IllegalStateException("現在ステップが見つかりません。flowId=" + flowId + ", currentStepOrder=" + flow.getCurrentStepOrder());
+        if (step == null || !"ACTIVE".equals(step.getStatus())) {
+            return Optional.empty();
         }
-        // DB上で状態がズレたときに即検知する
-        if (!"ACTIVE".equals(step.getStatus())) {
-            throw new IllegalStateException("現在ステップがACTIVEではありません。status=" + step.getStatus());
-        }
-        return step;
+        return Optional.of(step);
+    }
+
+    public FlowStep getActiveStep(Long flowId) {
+        return findActiveStep(flowId)
+                .orElseThrow(() -> new IllegalStateException("現在ステップがACTIVEではありません。flowId=" + flowId));
     }
 
     public List<StepCandidate> getCandidates(Long flowStepId) {
         return candidateRepo.findByFlowStepIdOrderByStartAtAsc(flowStepId);
     }
 
-    // ===== 候補追加（MVP）=====
     @Transactional
     public void addCandidateToActiveStep(Long flowId, LocalDateTime startAt) {
         Flow flow = getFlow(flowId);
-        FlowStep active = getActiveStep(flowId); // ACTIVEチェック込み
+        FlowStep active = getActiveStep(flowId);
 
-        // startAtの下限チェック（任意だが実務的に入れておくと良い）
-        // 直前確定後の制約は、確定機能実装後に強化する
         if (startAt.isBefore(flow.getStartFrom())) {
             throw new IllegalArgumentException("候補日時が開始可能日時より前です。startAt=" + startAt + ", startFrom=" + flow.getStartFrom());
         }
