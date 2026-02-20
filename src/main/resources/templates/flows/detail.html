@@ -3,14 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <title>フロー詳細</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 </head>
 <body>
 
 <h1 th:text="${flow.title}">フロー名</h1>
 
+<div th:if="${message}" style="color:#090; margin-bottom: 12px;" th:text="${message}"></div>
+<div th:if="${error}" style="color:#c00; margin-bottom: 12px;" th:text="${error}"></div>
+
 <p>会議時間: <b><span th:text="${flow.durationMinutes}">60</span></b> 分</p>
 <p>ステータス: <b><span th:text="${flow.status}">IN_PROGRESS</span></b></p>
 <p>現在ステップ: <b><span th:text="${flow.currentStepOrder}">1</span></b></p>
+<p>予約可能期間: <b th:text="${minDate}">2026-02-21</b> 〜 <b th:text="${maxDate}">2026-05-21</b></p>
 
 <hr/>
 
@@ -52,11 +57,19 @@
     <th>開始</th>
     <th>終了</th>
     <th>状態</th>
+    <th>操作</th>
   </tr>
   <tr th:each="c : ${candidates}">
     <td th:text="${c.startAt}">2026-02-15T10:00</td>
     <td th:text="${c.endAt}">2026-02-15T11:00</td>
     <td th:text="${c.status}">PROPOSED</td>
+    <td>
+      <form method="post" th:if="${c.status == 'PROPOSED'}" th:action="@{'/flows/' + ${flow.id} + '/candidates/' + ${c.id} + '/select'}">
+        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+        <button type="submit">この候補で確定</button>
+      </form>
+      <span th:if="${c.status != 'PROPOSED'}">-</span>
+    </td>
   </tr>
   </table>
 
@@ -66,7 +79,7 @@
 
     <label>
       開始日時：
-      <input type="datetime-local" name="startAt" required />
+      <input id="startAtPicker" type="text" name="startAt" required placeholder="YYYY-MM-DDTHH:mm" />
     </label>
 
     <button type="submit">追加</button>
@@ -82,6 +95,21 @@
 <p>
   <a th:href="@{/flows}">一覧へ戻る</a>
 </p>
+
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script th:inline="javascript">
+  const blocked = /*[[${unavailableDates}]]*/ [];
+  const picker = document.getElementById('startAtPicker');
+  if (picker) {
+    flatpickr(picker, {
+        enableTime: true,
+        dateFormat: "Y-m-d\\TH:i",
+        minDate: /*[[${minDate}]]*/ '2026-02-21',
+        maxDate: /*[[${maxDate}]]*/ '2026-05-21',
+        disable: blocked
+    });
+  }
+</script>
 
 </body>
 </html>
