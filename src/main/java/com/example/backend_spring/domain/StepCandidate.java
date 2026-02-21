@@ -36,4 +36,8 @@ public class StepCandidate {
     public void select() {
         this.status = "SELECTED";
     }
+
+    public void reject() {
+        this.status = "REJECTED";
+    }
 }
