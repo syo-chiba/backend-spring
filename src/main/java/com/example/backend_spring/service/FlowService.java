@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -69,8 +70,29 @@ public class FlowService {
         return saved.getId();
     }
 
+    public List<Flow> listFlows(String status, String keyword, String sort) {
+        Comparator<Flow> comparator;
+        if ("created_asc".equals(sort)) {
+            comparator = Comparator.comparing(Flow::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(Flow::getId, Comparator.nullsLast(Comparator.naturalOrder()));
+        } else {
+            comparator = Comparator.comparing(Flow::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()))
+                    .thenComparing(Flow::getId, Comparator.nullsLast(Comparator.reverseOrder()));
+        }
+
+        String normalizedStatus = status == null ? "" : status.trim();
+        String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase();
+
+        return flowRepo.findAll().stream()
+                .filter(flow -> normalizedStatus.isEmpty() || normalizedStatus.equals(flow.getStatus()))
+                .filter(flow -> normalizedKeyword.isEmpty() ||
+                        (flow.getTitle() != null && flow.getTitle().toLowerCase().contains(normalizedKeyword)))
+                .sorted(comparator)
+                .toList();
+    }
+
     public List<Flow> listFlows() {
-        return flowRepo.findAllByOrderByIdDesc();
+        return listFlows(null, null, "created_desc");
     }
 
     public Flow getFlow(Long id) {

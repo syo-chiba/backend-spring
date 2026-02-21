@@ -1,6 +1,7 @@
 package com.example.backend_spring.service;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -76,6 +77,38 @@ class FlowServiceTest {
 
         assertTrue(ex.getMessage().contains("既に予約候補"));
         verify(candidateRepo, never()).save(any(StepCandidate.class));
+    }
+
+
+    @Test
+    void listFlows_shouldFilterByStatusAndKeyword() {
+        Flow f1 = new Flow("面談A", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 1L);
+        Flow f2 = new Flow("定例B", 60, LocalDateTime.of(2026, 2, 22, 9, 0), 1L);
+        ReflectionTestUtils.setField(f1, "status", "IN_PROGRESS");
+        ReflectionTestUtils.setField(f2, "status", "DONE");
+
+        when(flowRepo.findAll()).thenReturn(List.of(f1, f2));
+
+        List<Flow> filtered = flowService.listFlows("DONE", "定例", "created_desc");
+
+        assertEquals(1, filtered.size());
+        assertEquals("定例B", filtered.get(0).getTitle());
+    }
+
+    @Test
+    void listFlows_shouldSortByCreatedAtAsc() {
+        Flow older = new Flow("old", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 1L);
+        Flow newer = new Flow("new", 60, LocalDateTime.of(2026, 2, 22, 9, 0), 1L);
+
+        ReflectionTestUtils.setField(older, "createdAt", LocalDateTime.of(2026, 2, 21, 8, 0));
+        ReflectionTestUtils.setField(newer, "createdAt", LocalDateTime.of(2026, 2, 22, 8, 0));
+
+        when(flowRepo.findAll()).thenReturn(List.of(newer, older));
+
+        List<Flow> sorted = flowService.listFlows("", "", "created_asc");
+
+        assertEquals("old", sorted.get(0).getTitle());
+        assertEquals("new", sorted.get(1).getTitle());
     }
 
     @Test

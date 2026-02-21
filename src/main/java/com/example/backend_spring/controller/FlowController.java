@@ -34,8 +34,15 @@ public class FlowController {
     }
 
     @GetMapping
-    public String list(Model model) {
-        model.addAttribute("flows", flowService.listFlows());
+    public String list(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false, name = "q") String keyword,
+            @RequestParam(required = false, defaultValue = "created_desc") String sort,
+            Model model) {
+        model.addAttribute("flows", flowService.listFlows(status, keyword, sort));
+        model.addAttribute("selectedStatus", status == null ? "" : status);
+        model.addAttribute("keyword", keyword == null ? "" : keyword);
+        model.addAttribute("sort", sort);
         return "flows/list";
     }
 

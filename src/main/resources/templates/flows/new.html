@@ -56,12 +56,24 @@
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script th:inline="javascript">
     const blocked = /*[[${unavailableDates}]]*/ [];
+    const minDate = /*[[${minDate}]]*/ '2026-02-21';
+    const maxDate = /*[[${maxDate}]]*/ '2026-05-21';
     flatpickr('#startFromPicker', {
         enableTime: true,
         dateFormat: "Y-m-d\\TH:i",
-        minDate: /*[[${minDate}]]*/ '2026-02-21',
-        maxDate: /*[[${maxDate}]]*/ '2026-05-21',
-        disable: blocked
+        minDate: minDate,
+        maxDate: maxDate,
+        defaultDate: minDate,
+        disable: blocked,
+        onDayCreate: function(dObj, dStr, fp, dayElem) {
+            const y = dayElem.dateObj.getFullYear();
+            const m = String(dayElem.dateObj.getMonth() + 1).padStart(2, '0');
+            const d = String(dayElem.dateObj.getDate()).padStart(2, '0');
+            const key = `${y}-${m}-${d}`;
+            if (blocked.includes(key)) {
+                dayElem.title = '既に予約があるため選択できません';
+            }
+        }
     });
 </script>
 
