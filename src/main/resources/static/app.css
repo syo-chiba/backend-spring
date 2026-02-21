@@ -16,12 +16,17 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: "Inter", "Noto Sans JP", system-ui, -apple-system, sans-serif;
+  width: 100%;
+   position: relative;
+   display: flex;
 }
 
 .page {
-  max-width: 1000px;
-  margin: 32px auto;
-  padding: 0 16px;
+	width: 440px;
+    margin-top: 80px;
+    margin: 0 auto;
+    text-align: center;
+  
 }
 
 .card {
