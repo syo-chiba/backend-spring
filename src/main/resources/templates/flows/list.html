@@ -1,16 +1,70 @@
 <!doctype html>
-<html>
-	<head>
-	    <meta charset="UTF-8">
-	    <title>フロー一覧</title>
-	</head>
-	<body>
-	
-	<h1>フロー一覧</h1>
-	
-	<a href="/flows/new">新規作成</a>
-	
-	<p>※ 一覧表示は次で実装します</p>
-	
-	</body>
+<html lang="ja" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>フロー一覧</title>
+    <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main class="page">
+    <div class="top-bar">
+        <div>
+            <h1>フロー一覧</h1>
+            <p class="muted">予約フローの作成・進行状況を確認できます。</p>
+        </div>
+        <a class="btn btn-primary" href="/flows/new">+ 新規作成</a>
+    </div>
+
+    <section class="card" style="margin-bottom:16px;">
+        <form method="get" action="/flows" class="filter-grid">
+            <input type="hidden" name="sort" th:value="${sort}">
+            <div>
+                <label>タイトル検索</label>
+                <input type="text" name="q" th:value="${keyword}" placeholder="タイトル名を入力">
+            </div>
+            <div>
+                <label>ステータス</label>
+                <select name="status">
+                    <option value="" th:selected="${selectedStatus == ''}">すべて</option>
+                    <option value="IN_PROGRESS" th:selected="${selectedStatus == 'IN_PROGRESS'}">IN_PROGRESS</option>
+                    <option value="DONE" th:selected="${selectedStatus == 'DONE'}">DONE</option>
+                </select>
+            </div>
+            <div class="filter-actions">
+                <button class="btn btn-primary" type="submit">絞り込む</button>
+                <a class="btn btn-secondary" href="/flows">クリア</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="card">
+        <div th:if="${#lists.isEmpty(flows)}">
+            <p>条件に一致するフローがありません。</p>
+        </div>
+
+        <table th:if="${!#lists.isEmpty(flows)}">
+            <tr>
+                <th>ID</th>
+                <th>タイトル</th>
+                <th>状態</th>
+                <th>現在ステップ</th>
+                <th>
+                    <a class="sort-link"
+                       th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${toggleSort})}">
+                        作成日時
+                        <span th:text="${sort == 'created_asc' ? '↑' : '↓'}">↑</span>
+                    </a>
+                </th>
+            </tr>
+            <tr th:each="flow : ${flows}">
+                <td><a th:href="@{'/flows/' + ${flow.id}}" th:text="${flow.id}">1</a></td>
+                <td th:text="${flow.title}">定例会議</td>
+                <td><span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(flow.status)}" th:text="${flow.status}">IN_PROGRESS</span></td>
+                <td th:text="${flow.currentStepOrder}">1</td>
+                <td th:text="${flow.createdAt != null ? #temporals.format(flow.createdAt, 'yyyy/MM/dd HH:mm') : '-'}">2026/02/21 10:00</td>
+            </tr>
+        </table>
+    </section>
+</main>
+</body>
 </html>
