@@ -37,12 +37,16 @@ public class FlowController {
     public String list(
             @RequestParam(required = false) String status,
             @RequestParam(required = false, name = "q") String keyword,
-            @RequestParam(required = false, defaultValue = "created_desc") String sort,
+            @RequestParam(required = false, defaultValue = "created_asc") String sort,
             Model model) {
-        model.addAttribute("flows", flowService.listFlows(status, keyword, sort));
+        String normalizedSort = "created_desc".equals(sort) ? "created_desc" : "created_asc";
+        String toggleSort = "created_asc".equals(normalizedSort) ? "created_desc" : "created_asc";
+
+        model.addAttribute("flows", flowService.listFlows(status, keyword, normalizedSort));
         model.addAttribute("selectedStatus", status == null ? "" : status);
         model.addAttribute("keyword", keyword == null ? "" : keyword);
-        model.addAttribute("sort", sort);
+        model.addAttribute("sort", normalizedSort);
+        model.addAttribute("toggleSort", toggleSort);
         return "flows/list";
     }
 

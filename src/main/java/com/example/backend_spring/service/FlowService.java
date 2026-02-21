@@ -93,7 +93,7 @@ public class FlowService {
     }
 
     public List<Flow> listFlows() {
-        return listFlows(null, null, "created_desc");
+        return listFlows(null, null, "created_asc");
     }
 
     public Flow getFlow(Long id) {

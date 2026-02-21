@@ -17,6 +17,7 @@
 
     <section class="card" style="margin-bottom:16px;">
         <form method="get" action="/flows" class="filter-grid">
+            <input type="hidden" name="sort" th:value="${sort}">
             <div>
                 <label>タイトル検索</label>
                 <input type="text" name="q" th:value="${keyword}" placeholder="タイトル名を入力">
@@ -27,13 +28,6 @@
                     <option value="" th:selected="${selectedStatus == ''}">すべて</option>
                     <option value="IN_PROGRESS" th:selected="${selectedStatus == 'IN_PROGRESS'}">IN_PROGRESS</option>
                     <option value="DONE" th:selected="${selectedStatus == 'DONE'}">DONE</option>
-                </select>
-            </div>
-            <div>
-                <label>並び順</label>
-                <select name="sort">
-                    <option value="created_desc" th:selected="${sort == 'created_desc'}">作成日が新しい順</option>
-                    <option value="created_asc" th:selected="${sort == 'created_asc'}">作成日が古い順</option>
                 </select>
             </div>
             <div class="filter-actions">
@@ -54,7 +48,13 @@
                 <th>タイトル</th>
                 <th>状態</th>
                 <th>現在ステップ</th>
-                <th>作成日時</th>
+                <th>
+                    <a class="sort-link"
+                       th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${toggleSort})}">
+                        作成日時
+                        <span th:text="${sort == 'created_asc' ? '↑' : '↓'}">↑</span>
+                    </a>
+                </th>
             </tr>
             <tr th:each="flow : ${flows}">
                 <td><a th:href="@{'/flows/' + ${flow.id}}" th:text="${flow.id}">1</a></td>
