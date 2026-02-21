@@ -1,19 +1,17 @@
 package com.example.backend_spring.controller;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.verify;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -21,9 +19,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.example.backend_spring.domain.UserAccount;
 import com.example.backend_spring.repository.UserAccountRepository;
@@ -33,23 +31,21 @@ import com.example.backend_spring.service.FlowService;
 class FlowControllerTest {
 
     @Mock
-    private FlowService flowService;
-
-    @Mock
     private UserAccountRepository userRepo;
 
+    private StubFlowService flowService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
+        flowService = new StubFlowService();
         FlowController controller = new FlowController(flowService, userRepo);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
     @Test
     void create_whenServiceValidationFails_thenRedirectToNewWithError() throws Exception {
-        when(flowService.createFlow(anyString(), anyInt(), any(LocalDateTime.class), any(), anyList()))
-                .thenThrow(new IllegalArgumentException("validation failed"));
+        flowService.createException = new IllegalArgumentException("validation failed");
 
         mockMvc.perform(post("/flows")
                         .param("title", "面談")
@@ -69,13 +65,13 @@ class FlowControllerTest {
                 .andExpect(redirectedUrl("/flows/10"))
                 .andExpect(flash().attribute("message", "候補を追加しました。"));
 
-        verify(flowService).addCandidateToActiveStep(anyLong(), any(LocalDateTime.class));
+        assertEquals(10L, flowService.addCandidateFlowId);
+        assertNotNull(flowService.addCandidateStartAt);
     }
 
     @Test
     void selectCandidate_whenServiceFails_thenRedirectWithErrorMessage() throws Exception {
-        doThrow(new IllegalStateException("active step missing"))
-                .when(flowService).selectCandidateForActiveStep(10L, 99L);
+        flowService.selectException = new IllegalStateException("active step missing");
 
         mockMvc.perform(post("/flows/10/candidates/99/select"))
                 .andExpect(status().is3xxRedirection())
@@ -89,7 +85,6 @@ class FlowControllerTest {
         ReflectionTestUtils.setField(user, "id", 7L);
 
         when(userRepo.findByUsername("admin")).thenReturn(Optional.of(user));
-        when(flowService.createFlow(anyString(), anyInt(), any(LocalDateTime.class), any(), anyList())).thenReturn(5L);
 
         mockMvc.perform(post("/flows")
                         .principal(() -> "admin")
@@ -100,6 +95,53 @@ class FlowControllerTest {
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/flows/5"));
 
-        verify(flowService).createFlow(anyString(), anyInt(), any(LocalDateTime.class), org.mockito.ArgumentMatchers.eq(7L), anyList());
+        assertEquals(7L, flowService.createdByUserId);
+        assertEquals("面談", flowService.lastTitle);
+        assertEquals(60, flowService.lastDurationMinutes);
+        assertTrue(flowService.lastParticipants.containsAll(List.of("Aさん", "Bさん")));
+    }
+
+    private static class StubFlowService extends FlowService {
+        private String lastTitle;
+        private int lastDurationMinutes;
+        private LocalDateTime lastStartFrom;
+        private Long createdByUserId;
+        private List<String> lastParticipants;
+
+        private Long addCandidateFlowId;
+        private LocalDateTime addCandidateStartAt;
+
+        private RuntimeException createException;
+        private RuntimeException selectException;
+
+        private StubFlowService() {
+            super(null, null, null, Clock.systemDefaultZone());
+        }
+
+        @Override
+        public Long createFlow(String title, int durationMinutes, LocalDateTime startFrom, Long createdByUserId, List<String> participants) {
+            if (createException != null) {
+                throw createException;
+            }
+            this.lastTitle = title;
+            this.lastDurationMinutes = durationMinutes;
+            this.lastStartFrom = startFrom;
+            this.createdByUserId = createdByUserId;
+            this.lastParticipants = participants;
+            return 5L;
+        }
+
+        @Override
+        public void addCandidateToActiveStep(Long flowId, LocalDateTime startAt) {
+            this.addCandidateFlowId = flowId;
+            this.addCandidateStartAt = startAt;
+        }
+
+        @Override
+        public void selectCandidateForActiveStep(Long flowId, Long candidateId) {
+            if (selectException != null) {
+                throw selectException;
+            }
+        }
     }
 }
