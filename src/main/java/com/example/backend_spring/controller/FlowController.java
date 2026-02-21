@@ -9,8 +9,14 @@ import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
+import com.example.backend_spring.repository.UserAccountRepository;
 import com.example.backend_spring.service.FlowService;
 
 @Controller
@@ -18,80 +24,112 @@ import com.example.backend_spring.service.FlowService;
 public class FlowController {
 
     private final FlowService flowService;
+    private final UserAccountRepository userRepo;
 
-    // datetime-local 用フォーマッタ（秒なし対策）
-    private static final DateTimeFormatter DT_LOCAL =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm");
+    private static final DateTimeFormatter DT_LOCAL = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm");
 
-    public FlowController(FlowService flowService) {
+    public FlowController(FlowService flowService, UserAccountRepository userRepo) {
         this.flowService = flowService;
+        this.userRepo = userRepo;
     }
 
-    // 一覧（簡易）
     @GetMapping
-    public String list() {
+    public String list(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false, name = "q") String keyword,
+            @RequestParam(required = false, defaultValue = "created_desc") String sort,
+            Model model) {
+        model.addAttribute("flows", flowService.listFlows(status, keyword, sort));
+        model.addAttribute("selectedStatus", status == null ? "" : status);
+        model.addAttribute("keyword", keyword == null ? "" : keyword);
+        model.addAttribute("sort", sort);
         return "flows/list";
     }
 
-    // 作成画面表示
     @GetMapping("/new")
-    public String newForm() {
+    public String newForm(Model model) {
+        model.addAttribute("minDate", flowService.getReservableMinDate());
+        model.addAttribute("maxDate", flowService.getReservableMaxDate());
+        model.addAttribute("unavailableDates", flowService.getUnavailableDates());
         return "flows/new";
     }
 
-    // 作成処理
     @PostMapping
     public String create(
             @RequestParam String title,
             @RequestParam int durationMinutes,
             @RequestParam String startFrom,
             @RequestParam String participants,
-            Principal principal
-    ) {
+            Principal principal,
+            RedirectAttributes redirectAttributes) {
 
-        LocalDateTime start = LocalDateTime.parse(startFrom, DT_LOCAL);
+        try {
+            LocalDateTime start = LocalDateTime.parse(startFrom, DT_LOCAL);
 
-        List<String> participantList =
-                Arrays.stream(participants.split("\\r?\\n"))
-                        .map(String::trim)
-                        .filter(s -> !s.isEmpty())
-                        .collect(Collectors.toList());
+            List<String> participantList = Arrays.stream(participants.split("\\r?\\n"))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList());
 
-        Long flowId = flowService.createFlow(
-                title,
-                durationMinutes,
-                start,
-                null,
-                participantList
-        );
+            Long createdByUserId = null;
+            if (principal != null) {
+                createdByUserId = userRepo.findByUsername(principal.getName())
+                        .map(u -> u.getId())
+                        .orElse(null);
+            }
 
-        return "redirect:/flows/" + flowId;
+            Long flowId = flowService.createFlow(title, durationMinutes, start, createdByUserId, participantList);
+            return "redirect:/flows/" + flowId;
+        } catch (IllegalArgumentException ex) {
+            redirectAttributes.addFlashAttribute("error", ex.getMessage());
+            return "redirect:/flows/new";
+        }
     }
 
-    // 詳細画面
     @GetMapping("/{id}")
     public String detail(@PathVariable Long id, Model model) {
 
         var flow = flowService.getFlow(id);
         var steps = flowService.getSteps(id);
-        var active = flowService.getActiveStep(id);
-        var candidates = flowService.getCandidates(active.getId());
+        var activeOpt = flowService.findActiveStep(id);
+        var candidates = activeOpt.map(step -> flowService.getCandidates(step.getId())).orElse(List.of());
 
         model.addAttribute("flow", flow);
         model.addAttribute("steps", steps);
-        model.addAttribute("activeStep", active);
+        model.addAttribute("activeStep", activeOpt.orElse(null));
         model.addAttribute("candidates", candidates);
+        model.addAttribute("minDate", flowService.getReservableMinDate());
+        model.addAttribute("maxDate", flowService.getReservableMaxDate());
+        model.addAttribute("unavailableDates", flowService.getUnavailableDates());
 
         return "flows/detail";
     }
 
-    // 候補追加
     @PostMapping("/{id}/candidates")
     public String addCandidate(
             @PathVariable Long id,
-            @RequestParam String startAt
-    ) {
-        flowService.addCandidateToActiveStep(id, LocalDateTime.parse(startAt, DT_LOCAL));
+            @RequestParam String startAt,
+            RedirectAttributes redirectAttributes) {
+        try {
+            flowService.addCandidateToActiveStep(id, LocalDateTime.parse(startAt, DT_LOCAL));
+            redirectAttributes.addFlashAttribute("message", "候補を追加しました。");
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            redirectAttributes.addFlashAttribute("error", ex.getMessage());
+        }
+        return "redirect:/flows/" + id;
+    }
+
+    @PostMapping("/{id}/candidates/{candidateId}/select")
+    public String selectCandidate(
+            @PathVariable Long id,
+            @PathVariable Long candidateId,
+            RedirectAttributes redirectAttributes) {
+        try {
+            flowService.selectCandidateForActiveStep(id, candidateId);
+            redirectAttributes.addFlashAttribute("message", "候補を確定しました。");
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            redirectAttributes.addFlashAttribute("error", ex.getMessage());
+        }
         return "redirect:/flows/" + id;
     }
 }
