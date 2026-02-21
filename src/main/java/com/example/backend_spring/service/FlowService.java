@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -88,7 +89,7 @@ public class FlowService {
                 .filter(flow -> normalizedKeyword.isEmpty() ||
                         (flow.getTitle() != null && flow.getTitle().toLowerCase().contains(normalizedKeyword)))
                 .sorted(comparator)
-                .toList();
+                .collect(Collectors.toList());
     }
 
     public List<Flow> listFlows() {
@@ -138,7 +139,7 @@ public class FlowService {
                 .map(c -> c.getStartAt().toLocalDate().toString())
                 .distinct()
                 .sorted()
-                .toList();
+                .collect(Collectors.toList());
     }
 
     public LocalDate getReservableMinDate() {
