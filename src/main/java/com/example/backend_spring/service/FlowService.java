@@ -151,14 +151,7 @@ public class FlowService {
 
         LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
 
-        var conflict = candidateRepo.findFirstTimeConflictForOwner(flow.getCreatedByUserId(), startAt, endAt);
-        if (conflict.isPresent()) {
-            var c = conflict.get();
-            throw new IllegalArgumentException(
-                    "候補時間が重複しています: フロー=" + c.getFlowTitle()
-                            + ", 参加者=" + c.getParticipantName()
-                            + ", 既存=" + c.getStartAt() + " - " + c.getEndAt());
-        }
+        assertNoOwnerTimeOverlap(flow, startAt, endAt);
 
         candidateRepo.save(new StepCandidate(active.getId(), startAt, endAt));
     }
@@ -201,6 +194,17 @@ public class FlowService {
         flowRepo.save(flow);
     }
 
+
+    private void assertNoOwnerTimeOverlap(Flow flow, LocalDateTime newStartAt, LocalDateTime newEndAt) {
+        var conflict = candidateRepo.findFirstTimeConflictForOwner(flow.getCreatedByUserId(), newStartAt, newEndAt);
+        if (conflict.isPresent()) {
+            var c = conflict.get();
+            throw new IllegalArgumentException(
+                    "候補時間が重複しています: フロー=" + c.getFlowTitle()
+                            + ", 参加者=" + c.getParticipantName()
+                            + ", 既存=" + c.getStartAt() + " - " + c.getEndAt());
+        }
+    }
 
     private void validateReservableDateTime(LocalDateTime dateTime, String label) {
         LocalDate minDate = getReservableMinDate();
