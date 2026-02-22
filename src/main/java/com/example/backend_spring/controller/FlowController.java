@@ -54,7 +54,6 @@ public class FlowController {
     public String newForm(Model model) {
         model.addAttribute("minDate", flowService.getReservableMinDate());
         model.addAttribute("maxDate", flowService.getReservableMaxDate());
-        model.addAttribute("unavailableDates", flowService.getUnavailableDates());
         return "flows/new";
     }
 
@@ -104,7 +103,6 @@ public class FlowController {
         model.addAttribute("candidates", candidates);
         model.addAttribute("minDate", flowService.getReservableMinDate());
         model.addAttribute("maxDate", flowService.getReservableMaxDate());
-        model.addAttribute("unavailableDates", flowService.getUnavailableDates());
 
         return "flows/detail";
     }

@@ -49,6 +49,7 @@ public class Flow {
     public String getStatus() { return status; }
     public int getCurrentStepOrder() { return currentStepOrder; }
     public LocalDateTime getStartFrom() { return startFrom; }
+    public Long getCreatedByUserId() { return createdByUserId; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 
     public void moveToNextStep() {

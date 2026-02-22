@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -61,24 +61,6 @@ class FlowServiceTest {
         verify(flowRepo, never()).save(any(Flow.class));
     }
 
-    @Test
-    void addCandidateToActiveStep_shouldRejectDateConflictAcrossAllUsers() {
-        Flow flow = new Flow("面談", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 1L);
-        FlowStep active = new FlowStep(10L, 1, "A");
-        active.activate();
-
-        when(flowRepo.findById(10L)).thenReturn(Optional.of(flow));
-        when(stepRepo.findByFlowIdAndStepOrder(10L, 1)).thenReturn(active);
-        when(candidateRepo.existsByStatusInAndStartAtGreaterThanEqualAndStartAtLessThan(anyList(), any(), any()))
-                .thenReturn(true);
-
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> flowService.addCandidateToActiveStep(10L, LocalDateTime.of(2026, 2, 23, 11, 0)));
-
-        assertTrue(ex.getMessage().contains("既に予約候補"));
-        verify(candidateRepo, never()).save(any(StepCandidate.class));
-    }
-
 
     @Test
     void listFlows_shouldFilterByStatusAndKeyword() {
@@ -109,6 +91,67 @@ class FlowServiceTest {
 
         assertEquals("old", sorted.get(0).getTitle());
         assertEquals("new", sorted.get(1).getTitle());
+    }
+
+
+    @Test
+    void addCandidateToActiveStep_shouldRejectWhenTimeOverlapsForSameOwner() {
+        Flow flow = new Flow("面談", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 77L);
+        FlowStep active = new FlowStep(30L, 1, "A");
+        active.activate();
+        ReflectionTestUtils.setField(active, "id", 1L);
+
+        StepCandidateRepository.ConflictCandidateView conflict = new StepCandidateRepository.ConflictCandidateView() {
+            public String getFlowTitle() { return "既存フロー"; }
+            public String getParticipantName() { return "Bさん"; }
+            public LocalDateTime getStartAt() { return LocalDateTime.of(2026, 2, 23, 10, 0); }
+            public LocalDateTime getEndAt() { return LocalDateTime.of(2026, 2, 23, 11, 0); }
+        };
+
+        when(flowRepo.findById(30L)).thenReturn(Optional.of(flow));
+        when(stepRepo.findByFlowIdAndStepOrder(30L, 1)).thenReturn(active);
+        when(candidateRepo.findFirstTimeConflictForOwner(eq(77L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(Optional.of(conflict));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> flowService.addCandidateToActiveStep(30L, LocalDateTime.of(2026, 2, 23, 10, 30)));
+
+        assertTrue(ex.getMessage().contains("重複"));
+        verify(candidateRepo, never()).save(any(StepCandidate.class));
+    }
+
+    @Test
+    void addCandidateToActiveStep_shouldAllowWhenBoundaryTouches() {
+        Flow flow = new Flow("面談", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 77L);
+        FlowStep active = new FlowStep(31L, 1, "A");
+        active.activate();
+        ReflectionTestUtils.setField(active, "id", 1L);
+
+        when(flowRepo.findById(31L)).thenReturn(Optional.of(flow));
+        when(stepRepo.findByFlowIdAndStepOrder(31L, 1)).thenReturn(active);
+        when(candidateRepo.findFirstTimeConflictForOwner(eq(77L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(Optional.empty());
+
+        flowService.addCandidateToActiveStep(31L, LocalDateTime.of(2026, 2, 23, 11, 0));
+
+        verify(candidateRepo).save(any(StepCandidate.class));
+    }
+
+    @Test
+    void addCandidateToActiveStep_shouldAllowWhenDifferentOwnerHasConflictSlot() {
+        Flow flow = new Flow("面談", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 88L);
+        FlowStep active = new FlowStep(32L, 1, "A");
+        active.activate();
+        ReflectionTestUtils.setField(active, "id", 1L);
+
+        when(flowRepo.findById(32L)).thenReturn(Optional.of(flow));
+        when(stepRepo.findByFlowIdAndStepOrder(32L, 1)).thenReturn(active);
+        when(candidateRepo.findFirstTimeConflictForOwner(eq(88L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(Optional.empty());
+
+        flowService.addCandidateToActiveStep(32L, LocalDateTime.of(2026, 2, 23, 10, 0));
+
+        verify(candidateRepo).save(any(StepCandidate.class));
     }
 
     @Test

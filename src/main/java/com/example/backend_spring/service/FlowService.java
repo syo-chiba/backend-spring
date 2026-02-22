@@ -124,23 +124,6 @@ public class FlowService {
         return candidateRepo.findByFlowStepIdOrderByStartAtAsc(flowStepId);
     }
 
-    public List<String> getUnavailableDates() {
-        LocalDate tomorrow = LocalDate.now(clock).plusDays(1);
-        LocalDate endDate = tomorrow.plusMonths(3);
-
-        LocalDateTime from = tomorrow.atStartOfDay();
-        LocalDateTime toExclusive = endDate.plusDays(1).atStartOfDay();
-
-        return candidateRepo.findByStatusInAndStartAtGreaterThanEqualAndStartAtLessThan(
-                        BLOCKING_CANDIDATE_STATUSES,
-                        from,
-                        toExclusive)
-                .stream()
-                .map(c -> c.getStartAt().toLocalDate().toString())
-                .distinct()
-                .sorted()
-                .collect(Collectors.toList());
-    }
 
     public LocalDate getReservableMinDate() {
         return LocalDate.now(clock).plusDays(1);
@@ -167,6 +150,16 @@ public class FlowService {
         }
 
         LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
+
+        var conflict = candidateRepo.findFirstTimeConflictForOwner(flow.getCreatedByUserId(), startAt, endAt);
+        if (conflict.isPresent()) {
+            var c = conflict.get();
+            throw new IllegalArgumentException(
+                    "候補時間が重複しています: フロー=" + c.getFlowTitle()
+                            + ", 参加者=" + c.getParticipantName()
+                            + ", 既存=" + c.getStartAt() + " - " + c.getEndAt());
+        }
+
         candidateRepo.save(new StepCandidate(active.getId(), startAt, endAt));
     }
 
@@ -208,14 +201,6 @@ public class FlowService {
         flowRepo.save(flow);
     }
 
-    private boolean hasDateConflict(LocalDate date) {
-        LocalDateTime from = date.atStartOfDay();
-        LocalDateTime toExclusive = date.plusDays(1).atStartOfDay();
-        return candidateRepo.existsByStatusInAndStartAtGreaterThanEqualAndStartAtLessThan(
-                BLOCKING_CANDIDATE_STATUSES,
-                from,
-                toExclusive);
-    }
 
     private void validateReservableDateTime(LocalDateTime dateTime, String label) {
         LocalDate minDate = getReservableMinDate();
