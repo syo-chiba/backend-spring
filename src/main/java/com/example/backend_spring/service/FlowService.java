@@ -195,6 +195,16 @@ public class FlowService {
     }
 
 
+    /**
+     * 旧実装との互換レイヤー。
+     * 日付単位の衝突判定は廃止済みのため常にfalseを返す。
+     * （過去ブランチの呼び出し残骸があってもコンパイルを壊さないための保険）
+     */
+    @Deprecated(forRemoval = true)
+    private boolean hasDateConflict(LocalDate ignoredDate) {
+        return false;
+    }
+
     private void assertNoOwnerTimeOverlap(Flow flow, LocalDateTime newStartAt, LocalDateTime newEndAt) {
         var conflict = candidateRepo.findFirstTimeConflictForOwner(flow.getCreatedByUserId(), newStartAt, newEndAt);
         if (conflict.isPresent()) {
