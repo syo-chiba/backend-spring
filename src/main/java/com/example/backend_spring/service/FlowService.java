@@ -144,6 +144,11 @@ public class FlowService {
             throw new IllegalArgumentException("候補日時が開始可能日時より前です。startAt=" + startAt + ", startFrom=" + flow.getStartFrom());
         }
 
+        LocalDate targetDate = startAt.toLocalDate();
+        if (hasDateConflict(targetDate)) {
+            throw new IllegalArgumentException("この日付は既に予約候補があるため選択できません。date=" + targetDate);
+        }
+
         LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
 
         var conflict = candidateRepo.findFirstTimeConflictForOwner(flow.getCreatedByUserId(), startAt, endAt);
