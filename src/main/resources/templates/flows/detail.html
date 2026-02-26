@@ -3,80 +3,119 @@
 <head>
   <meta charset="UTF-8" />
   <title>フロー詳細</title>
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 </head>
 <body>
+<main class="page">
+  <div class="top-bar">
+    <div>
+      <h1 th:text="${flow.title}">フロー名</h1>
+      <p class="muted">フローの進行状況と候補日時を管理します。</p>
+    </div>
+    <a class="btn btn-secondary" th:href="@{/flows}">一覧へ戻る</a>
+  </div>
 
-<h1 th:text="${flow.title}">フロー名</h1>
+  <div th:if="${message}" class="alert alert-success" th:text="${message}"></div>
+  <div th:if="${error}" class="alert alert-error" th:text="${error}"></div>
 
-<p>会議時間: <b><span th:text="${flow.durationMinutes}">60</span></b> 分</p>
-<p>ステータス: <b><span th:text="${flow.status}">IN_PROGRESS</span></b></p>
-<p>現在ステップ: <b><span th:text="${flow.currentStepOrder}">1</span></b></p>
+  <section class="card" style="margin-bottom:16px;">
+    <p>会議時間: <b><span th:text="${flow.durationMinutes}">60</span></b> 分</p>
+    <p>ステータス: <span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(flow.status)}" th:text="${flow.status}">IN_PROGRESS</span></p>
+    <p>現在ステップ: <b th:text="${flow.currentStepOrder}">1</b></p>
+    <p>予約可能期間: <b th:text="${minDate}">2026-02-21</b> 〜 <b th:text="${maxDate}">2026-05-21</b></p>
+  </section>
 
-<hr/>
+  <section class="card" style="margin-bottom:16px;">
+    <h2>ステップ一覧</h2>
+    <table>
+      <tr>
+        <th>順番</th>
+        <th>参加者</th>
+        <th>状態</th>
+        <th>確定開始</th>
+        <th>確定終了</th>
+      </tr>
+      <tr th:each="step : ${steps}">
+        <td th:text="${step.stepOrder}">1</td>
+        <td th:text="${step.participantName}">Aさん</td>
+        <td><span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(step.status)}" th:text="${step.status}">ACTIVE</span></td>
+        <td th:text="${step.confirmedStartAt != null ? #temporals.format(step.confirmedStartAt, 'M/d(E) HH:mm') : '-'}">2/23(月) 10:00</td>
+        <td th:text="${step.confirmedEndAt != null ? #temporals.format(step.confirmedEndAt, 'M/d(E) HH:mm') : '-'}">2/23(月) 11:00</td>
+      </tr>
+    </table>
+  </section>
 
-<h2>ステップ一覧</h2>
-<table border="1" cellpadding="6">
-  <tr>
-    <th>順番</th>
-    <th>参加者</th>
-    <th>状態</th>
-    <th>確定開始</th>
-    <th>確定終了</th>
-  </tr>
-  <tr th:each="step : ${steps}">
-    <td th:text="${step.stepOrder}">1</td>
-    <td th:text="${step.participantName}">Aさん</td>
-    <td th:text="${step.status}">ACTIVE</td>
-    <td th:text="${step.confirmedStartAt}">-</td>
-    <td th:text="${step.confirmedEndAt}">-</td>
-  </tr>
-</table>
+  <section class="card">
+    <h2>現在の調整相手（ACTIVE）</h2>
+    <div th:if="${activeStep != null}">
+      <p>
+        <b th:text="${activeStep.participantName}">Aさん</b>
+        （状態: <span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(activeStep.status)}" th:text="${activeStep.status}">ACTIVE</span>）
+      </p>
 
-<hr/>
+      <h3>候補日時</h3>
 
-<h2>現在の調整相手（ACTIVE）</h2>
-<p>
-  <b th:text="${activeStep.participantName}">Aさん</b>
-  （状態: <span th:text="${activeStep.status}">ACTIVE</span>）
-</p>
+      <div th:if="${#lists.isEmpty(candidates)}">
+        <p>候補はまだありません。</p>
+      </div>
 
-<h3>候補日時</h3>
+      <table th:if="${!#lists.isEmpty(candidates)}" style="margin-bottom:12px;">
+        <tr>
+          <th>開始</th>
+          <th>終了</th>
+          <th>状態</th>
+          <th>操作</th>
+        </tr>
+        <tr th:each="c : ${candidates}">
+          <td th:text="${#temporals.format(c.startAt, 'M/d(E) HH:mm')}">2/23(月) 10:00</td>
+          <td th:text="${#temporals.format(c.endAt, 'M/d(E) HH:mm')}">2/23(月) 11:00</td>
+          <td><span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(c.status)}" th:text="${c.status}">PROPOSED</span></td>
+          <td>
+            <form method="post" th:if="${c.status == 'PROPOSED'}" th:action="@{'/flows/' + ${flow.id} + '/candidates/' + ${c.id} + '/select'}">
+              <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+              <button class="btn btn-secondary" type="submit">この候補で確定</button>
+            </form>
+            <span th:if="${c.status != 'PROPOSED'}">-</span>
+          </td>
+        </tr>
+      </table>
 
-<div th:if="${#lists.isEmpty(candidates)}">
-  <p>候補はまだありません。</p>
-</div>
+      <h3>候補を追加</h3>
+      <form method="post" th:action="@{'/flows/' + ${flow.id} + '/candidates'}">
+        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
 
-<table th:if="${!#lists.isEmpty(candidates)}" border="1" cellpadding="6">
-  <tr>
-    <th>開始</th>
-    <th>終了</th>
-    <th>状態</th>
-  </tr>
-  <tr th:each="c : ${candidates}">
-    <td th:text="${c.startAt}">2026-02-15T10:00</td>
-    <td th:text="${c.endAt}">2026-02-15T11:00</td>
-    <td th:text="${c.status}">PROPOSED</td>
-  </tr>
-</table>
+        <div class="row">
+          <label>開始日時</label>
+          <input id="startAtPicker" type="text" name="startAt" required placeholder="YYYY-MM-DDTHH:mm" />
+        </div>
 
-<h3>候補を追加</h3>
-<form method="post" th:action="@{'/flows/' + ${flow.id} + '/candidates'}">
-  <!-- CSRF -->
-  <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+        <button class="btn btn-primary" type="submit">追加</button>
+      </form>
+    </div>
 
-  <label>
-    開始日時：
-    <input type="datetime-local" name="startAt" required />
-  </label>
+    <div th:if="${activeStep == null}">
+      <p>現在ACTIVEなステップがありません。フローが完了済みか、状態不整合の可能性があります。</p>
+    </div>
+  </section>
+</main>
 
-  <button type="submit">追加</button>
-</form>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script th:inline="javascript">
+  const minDate = /*[[${minDate}]]*/ '2026-02-21';
+  const maxDate = /*[[${maxDate}]]*/ '2026-05-21';
+  const picker = document.getElementById('startAtPicker');
 
-<hr/>
-
-<p>
-  <a th:href="@{/flows}">一覧へ戻る</a>
-</p>
+  if (picker) {
+    flatpickr(picker, {
+      enableTime: true,
+      dateFormat: "Y-m-d\\TH:i",
+      minDate: minDate,
+      maxDate: maxDate,
+      defaultDate: minDate
+    });
+  }
+</script>
 
 </body>
 </html>

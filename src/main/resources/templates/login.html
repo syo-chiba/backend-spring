@@ -2,39 +2,32 @@
 <html lang="ja" xmlns:th="http://www.thymeleaf.org">
 <head>
   <meta charset="UTF-8" />
-  <title>Sign in</title>
-  <style>
-    body { font-family: sans-serif; display:flex; height:100vh; align-items:center; justify-content:center; }
-    .card { width:360px; padding:24px; border:1px solid #ddd; border-radius:12px; }
-    .row { margin-bottom:12px; }
-    input { width:100%; padding:10px; box-sizing:border-box; }
-    button { width:100%; padding:10px; }
-    .error { color:#c00; margin-bottom:12px; }
-    .msg { color:#0a0; margin-bottom:12px; }
-  </style>
+  <title>ログイン</title>
+  <link rel="stylesheet" th:href="@{/app.css}">
 </head>
 <body>
-  <div class="card">
-    <h2>Please sign in</h2>
+  <main class="page" style="max-width:440px; margin-top:80px;">
+    <section class="card">
+      <h1>面談予約システム</h1>
+      <p class="muted">ログインしてフロー管理を開始してください。</p>
 
-    <div th:if="${param.error}" class="error">
-      ユーザー名またはパスワードが違います。
-    </div>
-    <div th:if="${param.logout}" class="msg">
-      ログアウトしました。
-    </div>
+      <div th:if="${param.error}" class="alert alert-error">ユーザー名またはパスワードが違います。</div>
+      <div th:if="${param.logout}" class="alert alert-success">ログアウトしました。</div>
 
-    <form method="post" action="/login">
-  <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+      <form method="post" action="/login">
+        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
 
-  <div class="row">
-    <input name="username" placeholder="Username" autocomplete="username" />
-  </div>
-  <div class="row">
-    <input type="password" name="password" placeholder="Password" autocomplete="current-password" />
-  </div>
-  <button type="submit">Sign in</button>
-</form>
-  </div>
+        <div class="row">
+          <label>ユーザー名</label>
+          <input name="username" autocomplete="username" required />
+        </div>
+        <div class="row">
+          <label>パスワード</label>
+          <input type="password" name="password" autocomplete="current-password" required />
+        </div>
+        <button class="btn btn-primary" type="submit" style="width:100%;">ログイン</button>
+      </form>
+    </section>
+  </main>
 </body>
 </html>
