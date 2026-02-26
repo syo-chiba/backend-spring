@@ -3,11 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <title>Home</title>
+  <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-  <h1>トップ画面</h1>
-  <p>ログイン成功</p>
-
-  <a href="/logout">ログアウト</a>
+  <main class="page">
+    <section class="card">
+      <h1>トップ画面</h1>
+      <p class="muted">ログイン成功しました。</p>
+      <a class="btn btn-primary" href="/flows">フロー一覧へ</a>
+      <a class="btn btn-secondary" href="/logout" style="margin-left:8px;">ログアウト</a>
+    </section>
+  </main>
 </body>
 </html>

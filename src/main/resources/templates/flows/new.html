@@ -1,38 +1,70 @@
 <!doctype html>
-<html xmlns:th="http://www.thymeleaf.org">
-	<head>
-	    <meta charset="UTF-8">
-	    <title>フロー作成</title>
-	</head>
-	<body>
-	
-	<h1>フロー作成</h1>
-	
-	<form method="post" action="/flows">
-		<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
-	
-	    <div>
-	        タイトル:
-	        <input type="text" name="title" required>
-	    </div>
-	
-	    <div>
-	        会議時間（分）:
-	        <input type="number" name="durationMinutes" value="60" required>
-	    </div>
-	
-	    <div>
-	        調整開始日時:
-	        <input type="datetime-local" name="startFrom" required>
-	    </div>
-	
-	    <div>
-	        参加者（改行区切り）:<br>
-	        <textarea name="participants" rows="5" cols="30" required></textarea>
-	    </div>
-	
-	    <button type="submit">作成</button>
-	</form>
-	
-	</body>
+<html lang="ja" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>フロー作成</title>
+    <link rel="stylesheet" href="/app.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+</head>
+<body>
+<main class="page" style="max-width: 760px;">
+    <div class="top-bar">
+        <div>
+            <h1>フロー作成</h1>
+            <p class="muted">面談調整の新しいフローを作成します。</p>
+        </div>
+        <a class="btn btn-secondary" href="/flows">一覧へ戻る</a>
+    </div>
+
+    <section class="card">
+        <div th:if="${error}" class="alert alert-error" th:text="${error}"></div>
+
+        <p>
+            予約可能期間: <b th:text="${minDate}">2026-02-21</b> 〜 <b th:text="${maxDate}">2026-05-21</b>
+        </p>
+
+        <form method="post" action="/flows">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+
+            <div class="row">
+                <label>タイトル</label>
+                <input type="text" name="title" required>
+            </div>
+
+            <div class="grid-2">
+                <div class="row">
+                    <label>会議時間（分）</label>
+                    <input type="number" name="durationMinutes" value="60" min="1" required>
+                </div>
+
+                <div class="row">
+                    <label>調整開始日時</label>
+                    <input id="startFromPicker" type="text" name="startFrom" required placeholder="YYYY-MM-DDTHH:mm">
+                </div>
+            </div>
+
+            <div class="row">
+                <label>参加者（改行区切り）</label>
+                <textarea name="participants" rows="5" required placeholder="Aさん&#10;Bさん&#10;Cさん"></textarea>
+            </div>
+
+            <button class="btn btn-primary" type="submit">作成する</button>
+        </form>
+    </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script th:inline="javascript">
+    const minDate = /*[[${minDate}]]*/ '2026-02-21';
+    const maxDate = /*[[${maxDate}]]*/ '2026-05-21';
+    flatpickr('#startFromPicker', {
+        enableTime: true,
+        dateFormat: "Y-m-d\\TH:i",
+        minDate: minDate,
+        maxDate: maxDate,
+        defaultDate: minDate
+    });
+</script>
+
+</body>
 </html>
