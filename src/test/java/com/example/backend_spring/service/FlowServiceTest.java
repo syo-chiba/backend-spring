@@ -1,0 +1,190 @@
+package com.example.backend_spring.service;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.List;
+import java.util.Optional;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import com.example.backend_spring.domain.Flow;
+import com.example.backend_spring.domain.FlowStep;
+import com.example.backend_spring.domain.StepCandidate;
+import com.example.backend_spring.repository.FlowRepository;
+import com.example.backend_spring.repository.FlowStepRepository;
+import com.example.backend_spring.repository.StepCandidateRepository;
+
+@ExtendWith(MockitoExtension.class)
+class FlowServiceTest {
+
+    @Mock
+    private FlowRepository flowRepo;
+
+    @Mock
+    private FlowStepRepository stepRepo;
+
+    @Mock
+    private StepCandidateRepository candidateRepo;
+
+    private FlowService flowService;
+
+    @BeforeEach
+    void setUp() {
+        Clock fixedClock = Clock.fixed(Instant.parse("2026-02-20T00:00:00Z"), ZoneId.systemDefault());
+        flowService = new FlowService(flowRepo, stepRepo, candidateRepo, fixedClock);
+    }
+
+    @Test
+    void createFlow_shouldRejectOutOfRangeStartFrom() {
+        LocalDateTime invalidStart = LocalDateTime.of(2026, 2, 20, 10, 0);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> flowService.createFlow("面談", 60, invalidStart, 1L, List.of("A")));
+
+        assertTrue(ex.getMessage().contains("翌日から3ヶ月以内"));
+        verify(flowRepo, never()).save(any(Flow.class));
+    }
+
+
+    @Test
+    void listFlows_shouldFilterByStatusAndKeyword() {
+        Flow f1 = new Flow("面談A", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 1L);
+        Flow f2 = new Flow("定例B", 60, LocalDateTime.of(2026, 2, 22, 9, 0), 1L);
+        ReflectionTestUtils.setField(f1, "status", "IN_PROGRESS");
+        ReflectionTestUtils.setField(f2, "status", "DONE");
+
+        when(flowRepo.findAll()).thenReturn(List.of(f1, f2));
+
+        List<Flow> filtered = flowService.listFlows("DONE", "定例", "created_desc");
+
+        assertEquals(1, filtered.size());
+        assertEquals("定例B", filtered.get(0).getTitle());
+    }
+
+    @Test
+    void listFlows_shouldSortByCreatedAtAsc() {
+        Flow older = new Flow("old", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 1L);
+        Flow newer = new Flow("new", 60, LocalDateTime.of(2026, 2, 22, 9, 0), 1L);
+
+        ReflectionTestUtils.setField(older, "createdAt", LocalDateTime.of(2026, 2, 21, 8, 0));
+        ReflectionTestUtils.setField(newer, "createdAt", LocalDateTime.of(2026, 2, 22, 8, 0));
+
+        when(flowRepo.findAll()).thenReturn(List.of(newer, older));
+
+        List<Flow> sorted = flowService.listFlows("", "", "created_asc");
+
+        assertEquals("old", sorted.get(0).getTitle());
+        assertEquals("new", sorted.get(1).getTitle());
+    }
+
+
+    @Test
+    void addCandidateToActiveStep_shouldRejectWhenTimeOverlapsForSameOwner() {
+        Flow flow = new Flow("面談", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 77L);
+        FlowStep active = new FlowStep(30L, 1, "A");
+        active.activate();
+        ReflectionTestUtils.setField(active, "id", 1L);
+
+        StepCandidateRepository.ConflictCandidateView conflict = new StepCandidateRepository.ConflictCandidateView() {
+            public String getFlowTitle() { return "既存フロー"; }
+            public String getParticipantName() { return "Bさん"; }
+            public LocalDateTime getStartAt() { return LocalDateTime.of(2026, 2, 23, 10, 0); }
+            public LocalDateTime getEndAt() { return LocalDateTime.of(2026, 2, 23, 11, 0); }
+        };
+
+        when(flowRepo.findById(30L)).thenReturn(Optional.of(flow));
+        when(stepRepo.findByFlowIdAndStepOrder(30L, 1)).thenReturn(active);
+        when(candidateRepo.findFirstTimeConflictForOwner(eq(77L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(Optional.of(conflict));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> flowService.addCandidateToActiveStep(30L, LocalDateTime.of(2026, 2, 23, 10, 30)));
+
+        assertTrue(ex.getMessage().contains("重複"));
+        verify(candidateRepo, never()).save(any(StepCandidate.class));
+    }
+
+    @Test
+    void addCandidateToActiveStep_shouldAllowWhenBoundaryTouches() {
+        Flow flow = new Flow("面談", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 77L);
+        FlowStep active = new FlowStep(31L, 1, "A");
+        active.activate();
+        ReflectionTestUtils.setField(active, "id", 1L);
+
+        when(flowRepo.findById(31L)).thenReturn(Optional.of(flow));
+        when(stepRepo.findByFlowIdAndStepOrder(31L, 1)).thenReturn(active);
+        when(candidateRepo.findFirstTimeConflictForOwner(eq(77L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(Optional.empty());
+
+        flowService.addCandidateToActiveStep(31L, LocalDateTime.of(2026, 2, 23, 11, 0));
+
+        verify(candidateRepo).save(any(StepCandidate.class));
+    }
+
+    @Test
+    void addCandidateToActiveStep_shouldAllowWhenDifferentOwnerHasConflictSlot() {
+        Flow flow = new Flow("面談", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 88L);
+        FlowStep active = new FlowStep(32L, 1, "A");
+        active.activate();
+        ReflectionTestUtils.setField(active, "id", 1L);
+
+        when(flowRepo.findById(32L)).thenReturn(Optional.of(flow));
+        when(stepRepo.findByFlowIdAndStepOrder(32L, 1)).thenReturn(active);
+        when(candidateRepo.findFirstTimeConflictForOwner(eq(88L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(Optional.empty());
+
+        flowService.addCandidateToActiveStep(32L, LocalDateTime.of(2026, 2, 23, 10, 0));
+
+        verify(candidateRepo).save(any(StepCandidate.class));
+    }
+
+    @Test
+    void selectCandidateForActiveStep_shouldConfirmAndAdvanceToNextStep() {
+        Flow flow = new Flow("面談", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 1L);
+        FlowStep active = new FlowStep(20L, 1, "A");
+        active.activate();
+        ReflectionTestUtils.setField(active, "id", 1L);
+
+        FlowStep next = new FlowStep(20L, 2, "B");
+
+        StepCandidate candidate = new StepCandidate(1L, LocalDateTime.of(2026, 2, 22, 10, 0), LocalDateTime.of(2026, 2, 22, 11, 0));
+        ReflectionTestUtils.setField(candidate, "id", 99L);
+
+        StepCandidate another = new StepCandidate(1L, LocalDateTime.of(2026, 2, 23, 10, 0), LocalDateTime.of(2026, 2, 23, 11, 0));
+        ReflectionTestUtils.setField(another, "id", 100L);
+
+        when(flowRepo.findById(20L)).thenReturn(Optional.of(flow));
+        when(stepRepo.findByFlowIdAndStepOrder(20L, 1)).thenReturn(active);
+        when(candidateRepo.findById(99L)).thenReturn(Optional.of(candidate));
+        when(candidateRepo.findByFlowStepIdOrderByStartAtAsc(1L)).thenReturn(List.of(candidate, another));
+        when(stepRepo.findByFlowIdAndStepOrder(20L, 2)).thenReturn(next);
+
+        flowService.selectCandidateForActiveStep(20L, 99L);
+
+        assertTrue("SELECTED".equals(candidate.getStatus()));
+        assertTrue("REJECTED".equals(another.getStatus()));
+        assertTrue("CONFIRMED".equals(active.getStatus()));
+        assertTrue("ACTIVE".equals(next.getStatus()));
+
+        verify(candidateRepo).save(candidate);
+        verify(stepRepo).save(active);
+        verify(stepRepo).save(next);
+        verify(flowRepo).save(flow);
+    }
+}

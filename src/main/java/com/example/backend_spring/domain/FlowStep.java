@@ -36,6 +36,8 @@ public class FlowStep {
     public int getStepOrder() { return stepOrder; }
     public String getParticipantName() { return participantName; }
     public String getStatus() { return status; }
+    public LocalDateTime getConfirmedStartAt() { return confirmedStartAt; }
+    public LocalDateTime getConfirmedEndAt() { return confirmedEndAt; }
 
     public void activate() {
         this.status = "ACTIVE";
