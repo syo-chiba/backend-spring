@@ -119,147 +119,119 @@ th { background: #f8fafc; }
   gap: 16px;
 }
 
-.gantt-head {
-  margin-bottom: 12px;
-}
-
-.gantt-list {
-  display: grid;
-  gap: 12px;
-}
-
-.gantt-row {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px;
-  background: #fff;
-}
-
-.gantt-meta {
+.calendar-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
-.gantt-title {
-  color: var(--text);
-  text-decoration: none;
-  font-weight: 700;
-}
-
-.gantt-title:hover {
-  text-decoration: underline;
-}
-
-.gantt-sub {
+.calendar-nav {
   display: flex;
-  align-items: center;
   gap: 8px;
 }
 
-.gantt-weeks {
+.calendar-grid {
+  --time-col-width: 72px;
+  --hour-height: 44px;
   display: grid;
-  gap: 10px;
+  grid-template-columns: var(--time-col-width) repeat(7, minmax(120px, 1fr));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: auto;
+  min-width: 920px;
 }
 
-.gantt-week {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px;
+.calendar-corner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
+}
+
+.calendar-day-head {
+  text-align: center;
+  padding: 10px 4px;
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.calendar-day-head-today {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.calendar-time-col {
+  display: grid;
+  grid-template-rows: repeat(24, var(--hour-height));
   background: #fbfdff;
 }
 
-.gantt-week-label {
-  font-size: 12px;
-  font-weight: 700;
-  margin-bottom: 8px;
-  color: #1e3a8a;
-}
-
-.gantt-hour-row,
-.gantt-day-row {
-  display: grid;
-  grid-template-columns: 84px 1fr;
-  gap: 8px;
-  align-items: center;
-}
-
-.gantt-hour-row {
-  margin-bottom: 6px;
-}
-
-.gantt-day-label {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.gantt-day-label-head {
-  font-weight: 700;
-  color: var(--text);
-}
-
-.gantt-hour-scale {
-  display: grid;
-  grid-template-columns: repeat(24, minmax(0, 1fr));
-  gap: 0;
-  font-size: 10px;
-  color: #4b5563;
-}
-
-.gantt-hour-scale span {
-  text-align: center;
-}
-
-.gantt-track {
-  position: relative;
-  height: 30px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  overflow: hidden;
-  background-color: #fff;
-  background-image: linear-gradient(to right, rgba(15, 23, 42, 0.08) 1px, transparent 1px);
-  background-size: calc(100% / 24) 100%;
-}
-
-.gantt-day-empty {
-  position: absolute;
-  inset: 0;
+.calendar-time-label {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  color: var(--muted);
+  padding-top: 2px;
+  border-top: 1px solid var(--border);
   font-size: 11px;
+  color: var(--muted);
 }
 
-.gantt-segment {
+.calendar-day-col {
+  position: relative;
+  height: calc(var(--hour-height) * 24);
+  border-left: 1px solid var(--border);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 calc(var(--hour-height) - 1px),
+    var(--border) calc(var(--hour-height) - 1px) var(--hour-height)
+  );
+}
+
+.calendar-event {
   position: absolute;
-  top: 3px;
-  height: 22px;
-  border-radius: 999px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 8px;
-  white-space: nowrap;
-  font-size: 10px;
-  font-weight: 700;
+  left: 4px;
+  right: 4px;
+  border-radius: 8px;
+  padding: 4px 6px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
   overflow: hidden;
+  font-size: 10px;
+  line-height: 1.2;
 }
 
-.gantt-segment-confirmed {
+.calendar-event-title {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calendar-event-time {
+  opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calendar-event-confirmed {
   background: #dcfce7;
   color: #166534;
 }
 
-.gantt-segment-proposed {
+.calendar-event-proposed {
   background: #ffedd5;
   color: #9a3412;
 }
 
-.gantt-segment-selected {
+.calendar-event-selected {
   background: #bfdbfe;
   color: #1d4ed8;
 }
@@ -268,15 +240,12 @@ th { background: #f8fafc; }
   .grid-2 { grid-template-columns: 1fr; }
   .filter-grid { grid-template-columns: 1fr; }
   .filter-actions { justify-content: flex-start; }
-  .gantt-meta {
+  .calendar-head {
     flex-direction: column;
     align-items: flex-start;
   }
-  .gantt-hour-row,
-  .gantt-day-row {
-    grid-template-columns: 1fr;
-  }
-  .gantt-track {
-    overflow-x: auto;
+  .calendar-nav {
+    width: 100%;
+    flex-wrap: wrap;
   }
 }
