@@ -28,12 +28,13 @@ public interface StepCandidateRepository extends JpaRepository<StepCandidate, Lo
     @Query(value = """
             SELECT
                 f.title AS flowTitle,
-                fs.participant_name AS participantName,
+                COALESCE(p.display_name, CONCAT('participant#', fs.participant_id)) AS participantName,
                 sc.start_at AS startAt,
                 sc.end_at AS endAt
             FROM step_candidates sc
             INNER JOIN flow_steps fs ON fs.id = sc.flow_step_id
             INNER JOIN flows f ON f.id = fs.flow_id
+            LEFT JOIN participants p ON p.id = fs.participant_id
             WHERE ((:createdByUserId IS NULL AND f.created_by_user_id IS NULL) OR f.created_by_user_id = :createdByUserId)
               AND sc.status IN ('PROPOSED', 'SELECTED')
               AND sc.start_at < :newEndAt

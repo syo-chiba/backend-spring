@@ -18,7 +18,8 @@
     <section class="card" style="margin-bottom:16px;">
         <form method="get" action="/flows" class="filter-grid">
             <input type="hidden" name="sort" th:value="${sort}">
-            <input type="hidden" name="weekStart" th:value="${calendar.weekStart}">
+            <input type="hidden" name="view" th:value="${viewMode}">
+            <input type="hidden" name="cursor" th:value="${currentCursor}">
             <div>
                 <label>タイトル検索</label>
                 <input type="text" name="q" th:value="${keyword}" placeholder="タイトル名を入力">
@@ -33,7 +34,7 @@
             </div>
             <div class="filter-actions">
                 <button class="btn btn-primary" type="submit">絞り込む</button>
-                <a class="btn btn-secondary" th:href="@{/flows(weekStart=${calendar.weekStart})}">クリア</a>
+                <a class="btn btn-secondary" th:href="@{/flows(view=${viewMode}, cursor=${currentCursor})}">クリア</a>
             </div>
         </form>
     </section>
@@ -51,7 +52,7 @@
                 <th>現在ステップ</th>
                 <th>
                     <a class="sort-link"
-                       th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${toggleSort}, weekStart=${calendar.weekStart})}">
+                       th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${toggleSort}, view=${viewMode}, cursor=${currentCursor})}">
                         作成日時
                         <span th:text="${sort == 'created_asc' ? '↑' : '↓'}">↑</span>
                     </a>
@@ -70,41 +71,56 @@
     <section class="card" style="margin-top:16px;" th:if="${!#lists.isEmpty(flows)}">
         <div class="calendar-head">
             <div>
-                <h2>統合週間カレンダー</h2>
-                <p class="muted" th:text="${calendar.weekLabel}">2026/03/02 - 2026/03/08</p>
+                <h2 th:text="${viewMode == 'month' ? '統合月間カレンダー' : '統合週間カレンダー'}">統合週間カレンダー</h2>
+                <p class="muted" th:text="${viewLabel}">2026/03/02 - 2026/03/08</p>
             </div>
-            <div class="calendar-nav">
-                <a class="btn btn-secondary"
-                   th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${sort}, weekStart=${calendar.prevWeekStart})}">
-                    前週
-                </a>
-                <a class="btn btn-secondary"
-                   th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${sort})}">
-                    今週
-                </a>
-                <a class="btn btn-secondary"
-                   th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${sort}, weekStart=${calendar.nextWeekStart})}">
-                    次週
-                </a>
+            <div class="calendar-controls">
+                <div class="calendar-view-toggle">
+                    <a class="btn"
+                       th:classappend="${viewMode == 'week'} ? ' btn-primary' : ' btn-secondary'"
+                       th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${sort}, view='week', cursor=${currentCursor})}">
+                        週
+                    </a>
+                    <a class="btn"
+                       th:classappend="${viewMode == 'month'} ? ' btn-primary' : ' btn-secondary'"
+                       th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${sort}, view='month', cursor=${currentCursor})}">
+                        月
+                    </a>
+                </div>
+                <div class="calendar-nav">
+                    <a class="btn btn-secondary"
+                       th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${sort}, view=${viewMode}, cursor=${prevCursor})}">
+                        前へ
+                    </a>
+                    <a class="btn btn-secondary"
+                       th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${sort}, view=${viewMode}, cursor=${todayCursor})}"
+                       th:text="${viewMode == 'month' ? '今月' : '今週'}">
+                        今週
+                    </a>
+                    <a class="btn btn-secondary"
+                       th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${sort}, view=${viewMode}, cursor=${nextCursor})}">
+                        次へ
+                    </a>
+                </div>
             </div>
         </div>
 
-        <div class="calendar-grid">
+        <div class="calendar-grid" th:if="${viewMode == 'week'}">
             <div class="calendar-corner">時刻</div>
             <div class="calendar-day-head"
-                 th:each="day : ${calendar.days}"
+                 th:each="day : ${weekCalendar.days}"
                  th:classappend="${day.today} ? ' calendar-day-head-today' : ''"
                  th:text="${day.label}">
                 3/2(月)
             </div>
 
             <div class="calendar-time-col">
-                <div class="calendar-time-label" th:each="hour : ${calendar.hourLabels}">
+                <div class="calendar-time-label" th:each="hour : ${weekCalendar.hourLabels}">
                     <span th:text="${hour}">0</span>:00
                 </div>
             </div>
 
-            <div class="calendar-day-col" th:each="day : ${calendar.days}">
+            <div class="calendar-day-col" th:each="day : ${weekCalendar.days}">
                 <div class="calendar-event"
                      th:each="event : ${day.events}"
                      th:classappend="' ' + ${event.typeClass}"
@@ -114,6 +130,30 @@
                     <div class="calendar-event-time" th:text="${event.timeLabel}">3/2 10:00 - 3/2 11:00</div>
                 </div>
             </div>
+        </div>
+
+        <div class="month-grid" th:if="${viewMode == 'month'}">
+            <div class="month-weekday-head" th:each="header : ${monthCalendar.weekdayHeaders}" th:text="${header}">日</div>
+
+            <th:block th:each="week : ${monthCalendar.weeks}">
+                <div class="month-day-cell"
+                     th:each="day : ${week.days}"
+                     th:classappend="${!day.inCurrentMonth} ? ' month-day-out' : ''">
+                    <div class="month-day-number"
+                         th:classappend="${day.today} ? ' month-day-number-today' : ''"
+                         th:text="${day.dayLabel}">
+                        3/1
+                    </div>
+
+                    <div class="month-event"
+                         th:each="event : ${day.events}"
+                         th:classappend="' ' + ${event.typeClass}"
+                         th:title="${event.tooltip}">
+                        <div class="month-event-title" th:text="${event.title}">#1 面談 / Aさん</div>
+                        <div class="month-event-time" th:text="${event.timeLabel}">10:00 - 11:00</div>
+                    </div>
+                </div>
+            </th:block>
         </div>
     </section>
 </main>

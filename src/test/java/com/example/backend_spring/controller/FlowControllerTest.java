@@ -81,7 +81,7 @@ class FlowControllerTest {
 
     @Test
     void create_withPrincipal_mapsCreatedByUserId() throws Exception {
-        UserAccount user = new UserAccount("admin", "pw", true, "ROLE_ADMIN");
+        UserAccount user = new UserAccount("admin", "pw", true);
         ReflectionTestUtils.setField(user, "id", 7L);
 
         when(userRepo.findByUsername("admin")).thenReturn(Optional.of(user));
@@ -115,7 +115,7 @@ class FlowControllerTest {
         private RuntimeException selectException;
 
         private StubFlowService() {
-            super(null, null, null, Clock.systemDefaultZone());
+            super(null, null, null, null, Clock.systemDefaultZone());
         }
 
         @Override

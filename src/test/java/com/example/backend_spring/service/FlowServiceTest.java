@@ -11,10 +11,12 @@ import static org.mockito.Mockito.when;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,6 +30,7 @@ import com.example.backend_spring.domain.FlowStep;
 import com.example.backend_spring.domain.StepCandidate;
 import com.example.backend_spring.repository.FlowRepository;
 import com.example.backend_spring.repository.FlowStepRepository;
+import com.example.backend_spring.repository.ParticipantRepository;
 import com.example.backend_spring.repository.StepCandidateRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -42,12 +45,15 @@ class FlowServiceTest {
     @Mock
     private StepCandidateRepository candidateRepo;
 
+    @Mock
+    private ParticipantRepository participantRepo;
+
     private FlowService flowService;
 
     @BeforeEach
     void setUp() {
         Clock fixedClock = Clock.fixed(Instant.parse("2026-02-20T00:00:00Z"), ZoneId.systemDefault());
-        flowService = new FlowService(flowRepo, stepRepo, candidateRepo, fixedClock);
+        flowService = new FlowService(flowRepo, stepRepo, candidateRepo, participantRepo, fixedClock);
     }
 
     @Test
@@ -226,5 +232,39 @@ class FlowServiceTest {
         assertTrue(allEvents.stream().anyMatch(e -> "PROPOSED".equals(e.getStatus())));
         assertTrue(allEvents.stream().allMatch(e -> e.getStyle().contains("top:")));
         assertTrue(allEvents.stream().allMatch(e -> e.getStyle().contains("height:")));
+        assertTrue(allEvents.stream().allMatch(e -> !e.getTimeLabel().contains("/")));
+    }
+
+    @Test
+    void buildMonthlyCalendarView_shouldBuildMonthCellsAndTimeLabels() {
+        Flow flow = new Flow("面談", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 1L);
+        ReflectionTestUtils.setField(flow, "id", 33L);
+
+        FlowStep active = new FlowStep(33L, 1, "A");
+        active.activate();
+        ReflectionTestUtils.setField(active, "id", 301L);
+
+        StepCandidate proposed = new StepCandidate(301L,
+                LocalDateTime.of(2026, 3, 3, 12, 0),
+                LocalDateTime.of(2026, 3, 3, 13, 0));
+
+        when(stepRepo.findByFlowIdOrderByStepOrder(33L)).thenReturn(List.of(active));
+        when(candidateRepo.findByFlowStepIdOrderByStartAtAsc(301L)).thenReturn(List.of(proposed));
+
+        FlowService.MonthlyCalendarView view = flowService.buildMonthlyCalendarView(List.of(flow), LocalDate.of(2026, 3, 10));
+
+        assertEquals("2026年3月", view.getMonthLabel());
+        assertEquals("2026-03-01", view.getMonthStart());
+        assertEquals(7, view.getWeekdayHeaders().size());
+        assertTrue(view.getWeeks().size() >= 4);
+
+        List<FlowService.MonthlyCalendarEvent> allEvents = view.getWeeks().stream()
+                .flatMap(week -> week.getDays().stream())
+                .flatMap(day -> day.getEvents().stream())
+                .collect(Collectors.toList());
+
+        assertEquals(1, allEvents.size());
+        assertTrue(allEvents.get(0).getTitle().contains("#33"));
+        assertEquals("12:00 - 13:00", allEvents.get(0).getTimeLabel());
     }
 }

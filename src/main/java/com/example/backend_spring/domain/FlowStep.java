@@ -15,6 +15,10 @@ public class FlowStep {
 
     private int stepOrder;
 
+    @Column(name = "participant_id")
+    private Long participantId;
+
+    @Transient
     private String participantName;
 
     private String status = "PENDING";
@@ -26,15 +30,22 @@ public class FlowStep {
     protected FlowStep() {}
 
     public FlowStep(Long flowId, int stepOrder, String participantName) {
+        this(flowId, stepOrder, null, participantName);
+    }
+
+    public FlowStep(Long flowId, int stepOrder, Long participantId, String participantName) {
         this.flowId = flowId;
         this.stepOrder = stepOrder;
+        this.participantId = participantId;
         this.participantName = participantName;
     }
 
     public Long getId() { return id; }
     public Long getFlowId() { return flowId; }
     public int getStepOrder() { return stepOrder; }
+    public Long getParticipantId() { return participantId; }
     public String getParticipantName() { return participantName; }
+    public void setParticipantName(String participantName) { this.participantName = participantName; }
     public String getStatus() { return status; }
     public LocalDateTime getConfirmedStartAt() { return confirmedStartAt; }
     public LocalDateTime getConfirmedEndAt() { return confirmedEndAt; }

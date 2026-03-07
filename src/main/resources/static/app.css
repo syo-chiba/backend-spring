@@ -127,6 +127,18 @@ th { background: #f8fafc; }
   margin-bottom: 12px;
 }
 
+.calendar-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.calendar-view-toggle {
+  display: flex;
+  gap: 6px;
+}
+
 .calendar-nav {
   display: flex;
   gap: 8px;
@@ -236,6 +248,85 @@ th { background: #f8fafc; }
   color: #1d4ed8;
 }
 
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(120px, 1fr));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  min-width: 920px;
+}
+
+.month-weekday-head {
+  padding: 10px 4px;
+  text-align: center;
+  font-weight: 700;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
+  font-size: 13px;
+}
+
+.month-weekday-head:nth-child(7n) {
+  border-right: none;
+}
+
+.month-day-cell {
+  min-height: 170px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 8px;
+  background: #fff;
+}
+
+.month-day-cell:nth-child(7n) {
+  border-right: none;
+}
+
+.month-day-out {
+  background: #f8fafc;
+  color: #9ca3af;
+}
+
+.month-day-number {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.month-day-number-today {
+  display: inline-block;
+  min-width: 26px;
+  text-align: center;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
+  padding: 2px 8px;
+}
+
+.month-event {
+  margin-top: 6px;
+  border-radius: 8px;
+  padding: 4px 6px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.month-event-title {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.month-event-time {
+  opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (max-width: 768px) {
   .grid-2 { grid-template-columns: 1fr; }
   .filter-grid { grid-template-columns: 1fr; }
@@ -244,8 +335,14 @@ th { background: #f8fafc; }
     flex-direction: column;
     align-items: flex-start;
   }
+  .calendar-controls {
+    width: 100%;
+  }
   .calendar-nav {
     width: 100%;
     flex-wrap: wrap;
+  }
+  .month-day-cell {
+    min-height: 130px;
   }
 }
