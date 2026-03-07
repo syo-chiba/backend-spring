@@ -41,8 +41,10 @@ public class FlowController {
             Model model) {
         String normalizedSort = "created_desc".equals(sort) ? "created_desc" : "created_asc";
         String toggleSort = "created_asc".equals(normalizedSort) ? "created_desc" : "created_asc";
+        var flows = flowService.listFlows(status, keyword, normalizedSort);
 
-        model.addAttribute("flows", flowService.listFlows(status, keyword, normalizedSort));
+        model.addAttribute("flows", flows);
+        model.addAttribute("gantt", flowService.buildGanttView(flows));
         model.addAttribute("selectedStatus", status == null ? "" : status);
         model.addAttribute("keyword", keyword == null ? "" : keyword);
         model.addAttribute("sort", normalizedSort);
