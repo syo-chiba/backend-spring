@@ -189,7 +189,7 @@ class FlowServiceTest {
     }
 
     @Test
-    void buildGanttView_shouldContainConfirmedAndProposedSegments() {
+    void buildWeeklyCalendarView_shouldContainConfirmedAndProposedEvents() {
         Flow flow = new Flow("面談", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 1L);
         ReflectionTestUtils.setField(flow, "id", 20L);
 
@@ -207,24 +207,24 @@ class FlowServiceTest {
         when(stepRepo.findByFlowIdOrderByStepOrder(20L)).thenReturn(List.of(confirmed, active));
         when(candidateRepo.findByFlowStepIdOrderByStartAtAsc(200L)).thenReturn(List.of(proposed));
 
-        FlowService.FlowGanttView view = flowService.buildGanttView(List.of(flow));
+        FlowService.WeeklyCalendarView view = flowService.buildWeeklyCalendarView(
+                List.of(flow),
+                java.time.LocalDate.of(2026, 2, 23));
 
-        assertEquals(1, view.getRows().size());
+        assertEquals("2026-02-23", view.getWeekStart());
         assertEquals(24, view.getHourLabels().size());
         assertEquals("0", view.getHourLabels().get(0));
         assertEquals("23", view.getHourLabels().get(23));
+        assertEquals(7, view.getDays().size());
 
-        FlowService.FlowGanttRow row = view.getRows().get(0);
-        assertEquals("1/2 確定", row.getProgressText());
-        assertFalse(row.getWeeks().isEmpty());
-        assertEquals(7, row.getWeeks().get(0).getDays().size());
-
-        List<FlowService.GanttSegment> allSegments = row.getWeeks().stream()
-                .flatMap(week -> week.getDays().stream())
-                .flatMap(day -> day.getSegments().stream())
+        List<FlowService.CalendarEvent> allEvents = view.getDays().stream()
+                .flatMap(day -> day.getEvents().stream())
                 .collect(Collectors.toList());
-        assertEquals(2, allSegments.size());
-        assertTrue(allSegments.stream().anyMatch(s -> "CONFIRMED".equals(s.getStatus())));
-        assertTrue(allSegments.stream().anyMatch(s -> "PROPOSED".equals(s.getStatus())));
+
+        assertEquals(2, allEvents.size());
+        assertTrue(allEvents.stream().anyMatch(e -> "CONFIRMED".equals(e.getStatus())));
+        assertTrue(allEvents.stream().anyMatch(e -> "PROPOSED".equals(e.getStatus())));
+        assertTrue(allEvents.stream().allMatch(e -> e.getStyle().contains("top:")));
+        assertTrue(allEvents.stream().allMatch(e -> e.getStyle().contains("height:")));
     }
 }

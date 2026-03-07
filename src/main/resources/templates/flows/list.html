@@ -18,6 +18,7 @@
     <section class="card" style="margin-bottom:16px;">
         <form method="get" action="/flows" class="filter-grid">
             <input type="hidden" name="sort" th:value="${sort}">
+            <input type="hidden" name="weekStart" th:value="${calendar.weekStart}">
             <div>
                 <label>タイトル検索</label>
                 <input type="text" name="q" th:value="${keyword}" placeholder="タイトル名を入力">
@@ -32,7 +33,7 @@
             </div>
             <div class="filter-actions">
                 <button class="btn btn-primary" type="submit">絞り込む</button>
-                <a class="btn btn-secondary" href="/flows">クリア</a>
+                <a class="btn btn-secondary" th:href="@{/flows(weekStart=${calendar.weekStart})}">クリア</a>
             </div>
         </form>
     </section>
@@ -50,7 +51,7 @@
                 <th>現在ステップ</th>
                 <th>
                     <a class="sort-link"
-                       th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${toggleSort})}">
+                       th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${toggleSort}, weekStart=${calendar.weekStart})}">
                         作成日時
                         <span th:text="${sort == 'created_asc' ? '↑' : '↓'}">↑</span>
                     </a>
@@ -64,6 +65,56 @@
                 <td th:text="${flow.createdAt != null ? #temporals.format(flow.createdAt, 'yyyy/MM/dd HH:mm') : '-'}">2026/02/21 10:00</td>
             </tr>
         </table>
+    </section>
+
+    <section class="card" style="margin-top:16px;" th:if="${!#lists.isEmpty(flows)}">
+        <div class="calendar-head">
+            <div>
+                <h2>統合週間カレンダー</h2>
+                <p class="muted" th:text="${calendar.weekLabel}">2026/03/02 - 2026/03/08</p>
+            </div>
+            <div class="calendar-nav">
+                <a class="btn btn-secondary"
+                   th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${sort}, weekStart=${calendar.prevWeekStart})}">
+                    前週
+                </a>
+                <a class="btn btn-secondary"
+                   th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${sort})}">
+                    今週
+                </a>
+                <a class="btn btn-secondary"
+                   th:href="@{/flows(status=${selectedStatus}, q=${keyword}, sort=${sort}, weekStart=${calendar.nextWeekStart})}">
+                    次週
+                </a>
+            </div>
+        </div>
+
+        <div class="calendar-grid">
+            <div class="calendar-corner">時刻</div>
+            <div class="calendar-day-head"
+                 th:each="day : ${calendar.days}"
+                 th:classappend="${day.today} ? ' calendar-day-head-today' : ''"
+                 th:text="${day.label}">
+                3/2(月)
+            </div>
+
+            <div class="calendar-time-col">
+                <div class="calendar-time-label" th:each="hour : ${calendar.hourLabels}">
+                    <span th:text="${hour}">0</span>:00
+                </div>
+            </div>
+
+            <div class="calendar-day-col" th:each="day : ${calendar.days}">
+                <div class="calendar-event"
+                     th:each="event : ${day.events}"
+                     th:classappend="' ' + ${event.typeClass}"
+                     th:style="${event.style}"
+                     th:title="${event.tooltip}">
+                    <div class="calendar-event-title" th:text="${event.title}">#1 面談 / Aさん</div>
+                    <div class="calendar-event-time" th:text="${event.timeLabel}">3/2 10:00 - 3/2 11:00</div>
+                </div>
+            </div>
+        </div>
     </section>
 </main>
 </body>

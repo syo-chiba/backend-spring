@@ -1,8 +1,10 @@
 package com.example.backend_spring.controller;
 
 import java.security.Principal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -38,15 +40,17 @@ public class FlowController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false, name = "q") String keyword,
             @RequestParam(required = false, defaultValue = "created_asc") String sort,
+            @RequestParam(required = false) String weekStart,
             Model model) {
         String normalizedSort = "created_desc".equals(sort) ? "created_desc" : "created_asc";
         String toggleSort = "created_asc".equals(normalizedSort) ? "created_desc" : "created_asc";
 
         model.addAttribute("flows", flowService.listFlows(status, keyword, normalizedSort));
         var flows = flowService.listFlows(status, keyword, normalizedSort);
+        LocalDate requestedWeekStart = parseWeekStart(weekStart);
 
         model.addAttribute("flows", flows);
-        model.addAttribute("gantt", flowService.buildGanttView(flows));
+        model.addAttribute("calendar", flowService.buildWeeklyCalendarView(flows, requestedWeekStart));
         model.addAttribute("selectedStatus", status == null ? "" : status);
         model.addAttribute("keyword", keyword == null ? "" : keyword);
         model.addAttribute("sort", normalizedSort);
@@ -137,5 +141,16 @@ public class FlowController {
             redirectAttributes.addFlashAttribute("error", ex.getMessage());
         }
         return "redirect:/flows/" + id;
+    }
+
+    private LocalDate parseWeekStart(String weekStart) {
+        if (weekStart == null || weekStart.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(weekStart);
+        } catch (DateTimeParseException ex) {
+            return null;
+        }
     }
 }
