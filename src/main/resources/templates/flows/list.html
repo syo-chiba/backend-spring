@@ -70,7 +70,7 @@
         <div class="gantt-head">
             <div>
                 <h2>予約状況ガント</h2>
-                <p class="muted">表示範囲: <span th:text="${gantt.rangeStartLabel}">2/21 09:00</span> 〜 <span th:text="${gantt.rangeEndLabel}">2/24 18:00</span></p>
+                <p class="muted">1週間単位 / 時刻目盛り 0〜23時</p>
             </div>
         </div>
 
@@ -84,15 +84,31 @@
                     </div>
                 </div>
 
-                <div class="gantt-track">
-                    <div th:if="${#lists.isEmpty(row.segments)}" class="gantt-empty">候補・確定日時なし</div>
+                <div class="gantt-weeks">
+                    <div class="gantt-week" th:each="week : ${row.weeks}">
+                        <div class="gantt-week-label" th:text="${week.weekLabel}">2026/02/23 - 2026/03/01</div>
 
-                    <div th:each="segment : ${row.segments}"
-                         class="gantt-segment"
-                         th:classappend="' ' + ${segment.typeClass}"
-                         th:style="${segment.style}"
-                         th:title="${segment.tooltip}">
-                        <span th:text="${segment.status}">PROPOSED</span>
+                        <div class="gantt-hour-row">
+                            <div class="gantt-day-label gantt-day-label-head">時刻</div>
+                            <div class="gantt-hour-scale">
+                                <span th:each="hour : ${gantt.hourLabels}" th:text="${hour}">0</span>
+                            </div>
+                        </div>
+
+                        <div class="gantt-day-row" th:each="day : ${week.days}">
+                            <div class="gantt-day-label" th:text="${day.dayLabel}">2/23(月)</div>
+                            <div class="gantt-track">
+                                <div th:if="${#lists.isEmpty(day.segments)}" class="gantt-day-empty">-</div>
+
+                                <div th:each="segment : ${day.segments}"
+                                     class="gantt-segment"
+                                     th:classappend="' ' + ${segment.typeClass}"
+                                     th:style="${segment.style}"
+                                     th:title="${segment.tooltip}">
+                                    <span th:text="${segment.status}">PROPOSED</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

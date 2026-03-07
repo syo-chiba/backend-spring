@@ -2,6 +2,7 @@ package com.example.backend_spring.service;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -15,6 +16,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -210,10 +212,21 @@ class FlowServiceTest {
         FlowService.FlowGanttView view = flowService.buildGanttView(List.of(flow));
 
         assertEquals(1, view.getRows().size());
+        assertEquals(24, view.getHourLabels().size());
+        assertEquals("0", view.getHourLabels().get(0));
+        assertEquals("23", view.getHourLabels().get(23));
+
         FlowService.FlowGanttRow row = view.getRows().get(0);
         assertEquals("1/2 確定", row.getProgressText());
-        assertEquals(2, row.getSegments().size());
-        assertTrue(row.getSegments().stream().anyMatch(s -> "CONFIRMED".equals(s.getStatus())));
-        assertTrue(row.getSegments().stream().anyMatch(s -> "PROPOSED".equals(s.getStatus())));
+        assertFalse(row.getWeeks().isEmpty());
+        assertEquals(7, row.getWeeks().get(0).getDays().size());
+
+        List<FlowService.GanttSegment> allSegments = row.getWeeks().stream()
+                .flatMap(week -> week.getDays().stream())
+                .flatMap(day -> day.getSegments().stream())
+                .collect(Collectors.toList());
+        assertEquals(2, allSegments.size());
+        assertTrue(allSegments.stream().anyMatch(s -> "CONFIRMED".equals(s.getStatus())));
+        assertTrue(allSegments.stream().anyMatch(s -> "PROPOSED".equals(s.getStatus())));
     }
 }
