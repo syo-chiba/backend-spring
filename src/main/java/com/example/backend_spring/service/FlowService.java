@@ -9,8 +9,10 @@ import java.time.temporal.TemporalAdjusters;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -19,9 +21,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.backend_spring.domain.Flow;
 import com.example.backend_spring.domain.FlowStep;
+import com.example.backend_spring.domain.Participant;
 import com.example.backend_spring.domain.StepCandidate;
 import com.example.backend_spring.repository.FlowRepository;
 import com.example.backend_spring.repository.FlowStepRepository;
+import com.example.backend_spring.repository.ParticipantRepository;
 import com.example.backend_spring.repository.StepCandidateRepository;
 
 @Service
@@ -36,16 +40,19 @@ public class FlowService {
     private final FlowRepository flowRepo;
     private final FlowStepRepository stepRepo;
     private final StepCandidateRepository candidateRepo;
+    private final ParticipantRepository participantRepo;
     private final Clock clock;
 
     public FlowService(
             FlowRepository flowRepo,
             FlowStepRepository stepRepo,
             StepCandidateRepository candidateRepo,
+            ParticipantRepository participantRepo,
             Clock clock) {
         this.flowRepo = flowRepo;
         this.stepRepo = stepRepo;
         this.candidateRepo = candidateRepo;
+        this.participantRepo = participantRepo;
         this.clock = clock;
     }
 
@@ -64,7 +71,8 @@ public class FlowService {
                 continue;
             }
 
-            FlowStep step = new FlowStep(saved.getId(), order, name);
+            Participant participant = resolveOrCreateParticipant(name);
+            FlowStep step = new FlowStep(saved.getId(), order, participant.getId(), participant.getDisplayName());
             if (order == 1) {
                 step.activate();
             }
@@ -111,7 +119,7 @@ public class FlowService {
     }
 
     public List<FlowStep> getSteps(Long flowId) {
-        return stepRepo.findByFlowIdOrderByStepOrder(flowId);
+        return withParticipantNames(stepRepo.findByFlowIdOrderByStepOrder(flowId));
     }
 
     public Optional<FlowStep> findActiveStep(Long flowId) {
@@ -121,6 +129,7 @@ public class FlowService {
         if (step == null || !"ACTIVE".equals(step.getStatus())) {
             return Optional.empty();
         }
+        applyParticipantName(step);
         return Optional.of(step);
     }
 
@@ -289,22 +298,24 @@ public class FlowService {
         }
 
         List<CalendarSourceEvent> events = new ArrayList<>();
+        Map<Long, String> participantNameCache = new HashMap<>();
         for (Flow flow : flows) {
             if (flow == null || flow.getId() == null) {
                 continue;
             }
 
-            List<FlowStep> steps = stepRepo.findByFlowIdOrderByStepOrder(flow.getId());
+            List<FlowStep> steps = withParticipantNames(stepRepo.findByFlowIdOrderByStepOrder(flow.getId()));
             for (FlowStep step : steps) {
                 if ("CONFIRMED".equals(step.getStatus())
                         && step.getConfirmedStartAt() != null
                         && step.getConfirmedEndAt() != null) {
+                    String participantName = resolveParticipantDisplayName(step, participantNameCache);
                     events.add(new CalendarSourceEvent(
                             step.getConfirmedStartAt(),
                             step.getConfirmedEndAt(),
                             "CONFIRMED",
-                            buildEventTitle(flow, step.getParticipantName()),
-                            buildTooltip(flow, step.getParticipantName(), "CONFIRMED", step.getConfirmedStartAt(), step.getConfirmedEndAt())));
+                            buildEventTitle(flow, participantName),
+                            buildTooltip(flow, participantName, "CONFIRMED", step.getConfirmedStartAt(), step.getConfirmedEndAt())));
                 }
 
                 if (!"ACTIVE".equals(step.getStatus()) || step.getId() == null) {
@@ -318,13 +329,14 @@ public class FlowService {
                             || candidate.getEndAt() == null) {
                         continue;
                     }
+                    String participantName = resolveParticipantDisplayName(step, participantNameCache);
 
                     events.add(new CalendarSourceEvent(
                             candidate.getStartAt(),
                             candidate.getEndAt(),
                             candidate.getStatus(),
-                            buildEventTitle(flow, step.getParticipantName()),
-                            buildTooltip(flow, step.getParticipantName(), candidate.getStatus(), candidate.getStartAt(), candidate.getEndAt())));
+                            buildEventTitle(flow, participantName),
+                            buildTooltip(flow, participantName, candidate.getStatus(), candidate.getStartAt(), candidate.getEndAt())));
                 }
             }
         }
@@ -344,6 +356,45 @@ public class FlowService {
             baseTitle += " / " + participantName;
         }
         return baseTitle;
+    }
+
+    private Participant resolveOrCreateParticipant(String displayName) {
+        return participantRepo.findByParticipantTypeAndDisplayName("USER", displayName)
+                .or(() -> participantRepo.findByParticipantTypeAndDisplayName("EXTERNAL", displayName))
+                .orElseGet(() -> participantRepo.save(new Participant("EXTERNAL", null, displayName)));
+    }
+
+    private String resolveParticipantDisplayName(FlowStep step, Map<Long, String> cache) {
+        if (step.getParticipantId() != null) {
+            if (cache.containsKey(step.getParticipantId())) {
+                return cache.get(step.getParticipantId());
+            }
+
+            String name = participantRepo.findById(step.getParticipantId())
+                    .map(Participant::getDisplayName)
+                    .orElse("Unknown");
+            cache.put(step.getParticipantId(), name);
+            return name;
+        }
+        return "Unknown";
+    }
+
+    private List<FlowStep> withParticipantNames(List<FlowStep> steps) {
+        for (FlowStep step : steps) {
+            applyParticipantName(step);
+        }
+        return steps;
+    }
+
+    private void applyParticipantName(FlowStep step) {
+        if (step.getParticipantId() == null) {
+            step.setParticipantName("Unknown");
+            return;
+        }
+        String name = participantRepo.findById(step.getParticipantId())
+                .map(Participant::getDisplayName)
+                .orElse("Unknown");
+        step.setParticipantName(name);
     }
 
     private String buildTooltip(Flow flow, String participantName, String status, LocalDateTime startAt, LocalDateTime endAt) {

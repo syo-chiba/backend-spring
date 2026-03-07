@@ -30,6 +30,7 @@ import com.example.backend_spring.domain.FlowStep;
 import com.example.backend_spring.domain.StepCandidate;
 import com.example.backend_spring.repository.FlowRepository;
 import com.example.backend_spring.repository.FlowStepRepository;
+import com.example.backend_spring.repository.ParticipantRepository;
 import com.example.backend_spring.repository.StepCandidateRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -44,12 +45,15 @@ class FlowServiceTest {
     @Mock
     private StepCandidateRepository candidateRepo;
 
+    @Mock
+    private ParticipantRepository participantRepo;
+
     private FlowService flowService;
 
     @BeforeEach
     void setUp() {
         Clock fixedClock = Clock.fixed(Instant.parse("2026-02-20T00:00:00Z"), ZoneId.systemDefault());
-        flowService = new FlowService(flowRepo, stepRepo, candidateRepo, fixedClock);
+        flowService = new FlowService(flowRepo, stepRepo, candidateRepo, participantRepo, fixedClock);
     }
 
     @Test

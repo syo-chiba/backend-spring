@@ -19,21 +19,16 @@ public class UserAccount {
     @Column(nullable = false)
     private boolean enabled = true;
 
-    @Column(nullable = false, length = 255)
-    private String roles = "ROLE_USER";
-
     protected UserAccount() {}
 
-    public UserAccount(String username, String password, boolean enabled, String roles) {
+    public UserAccount(String username, String password, boolean enabled) {
         this.username = username;
         this.password = password;
         this.enabled = enabled;
-        this.roles = roles;
     }
 
     public Long getId() { return id; }
     public String getUsername() { return username; }
     public String getPassword() { return password; }
     public boolean isEnabled() { return enabled; }
-    public String getRoles() { return roles; }
 }

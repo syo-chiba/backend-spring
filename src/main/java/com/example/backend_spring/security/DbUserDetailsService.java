@@ -1,6 +1,6 @@
 package com.example.backend_spring.security;
 
-import java.util.Arrays;
+import java.util.List;
 
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.*;
@@ -23,7 +23,12 @@ public class DbUserDetailsService implements UserDetailsService {
         var user = repo.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
 
-        var authorities = Arrays.stream(user.getRoles().split(","))
+        List<String> roleNames = repo.findRoleNamesByUserId(user.getId());
+        if (roleNames.isEmpty()) {
+            roleNames = List.of("ROLE_USER");
+        }
+
+        var authorities = roleNames.stream()
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .map(SimpleGrantedAuthority::new)
