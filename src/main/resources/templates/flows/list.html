@@ -65,6 +65,39 @@
             </tr>
         </table>
     </section>
+
+    <section class="card" style="margin-top:16px;" th:if="${!#lists.isEmpty(flows)}">
+        <div class="gantt-head">
+            <div>
+                <h2>予約状況ガント</h2>
+                <p class="muted">表示範囲: <span th:text="${gantt.rangeStartLabel}">2/21 09:00</span> 〜 <span th:text="${gantt.rangeEndLabel}">2/24 18:00</span></p>
+            </div>
+        </div>
+
+        <div class="gantt-list">
+            <div class="gantt-row" th:each="row : ${gantt.rows}">
+                <div class="gantt-meta">
+                    <a class="gantt-title" th:href="@{'/flows/' + ${row.flowId}}" th:text="'#' + ${row.flowId} + ' ' + ${row.title}">#1 面談</a>
+                    <div class="gantt-sub">
+                        <span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(row.flowStatus)}" th:text="${row.flowStatus}">IN_PROGRESS</span>
+                        <span class="muted" th:text="${row.progressText}">1/3 確定</span>
+                    </div>
+                </div>
+
+                <div class="gantt-track">
+                    <div th:if="${#lists.isEmpty(row.segments)}" class="gantt-empty">候補・確定日時なし</div>
+
+                    <div th:each="segment : ${row.segments}"
+                         class="gantt-segment"
+                         th:classappend="' ' + ${segment.typeClass}"
+                         th:style="${segment.style}"
+                         th:title="${segment.tooltip}">
+                        <span th:text="${segment.status}">PROPOSED</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 </main>
 </body>
 </html>
