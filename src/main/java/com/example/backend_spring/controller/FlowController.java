@@ -40,15 +40,35 @@ public class FlowController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false, name = "q") String keyword,
             @RequestParam(required = false, defaultValue = "created_asc") String sort,
+            @RequestParam(required = false, defaultValue = "week") String view,
+            @RequestParam(required = false) String cursor,
             @RequestParam(required = false) String weekStart,
             Model model) {
         String normalizedSort = "created_desc".equals(sort) ? "created_desc" : "created_asc";
         String toggleSort = "created_asc".equals(normalizedSort) ? "created_desc" : "created_asc";
+        String normalizedView = "month".equals(view) ? "month" : "week";
         var flows = flowService.listFlows(status, keyword, normalizedSort);
-        LocalDate requestedWeekStart = parseWeekStart(weekStart);
+        LocalDate requestedCursor = parseDate(cursor != null ? cursor : weekStart);
 
         model.addAttribute("flows", flows);
-        model.addAttribute("calendar", flowService.buildWeeklyCalendarView(flows, requestedWeekStart));
+        model.addAttribute("viewMode", normalizedView);
+        if ("month".equals(normalizedView)) {
+            var monthCalendar = flowService.buildMonthlyCalendarView(flows, requestedCursor);
+            model.addAttribute("monthCalendar", monthCalendar);
+            model.addAttribute("viewLabel", monthCalendar.getMonthLabel());
+            model.addAttribute("currentCursor", monthCalendar.getMonthStart());
+            model.addAttribute("prevCursor", monthCalendar.getPrevMonthStart());
+            model.addAttribute("nextCursor", monthCalendar.getNextMonthStart());
+            model.addAttribute("todayCursor", LocalDate.now().withDayOfMonth(1).toString());
+        } else {
+            var weekCalendar = flowService.buildWeeklyCalendarView(flows, requestedCursor);
+            model.addAttribute("weekCalendar", weekCalendar);
+            model.addAttribute("viewLabel", weekCalendar.getWeekLabel());
+            model.addAttribute("currentCursor", weekCalendar.getWeekStart());
+            model.addAttribute("prevCursor", weekCalendar.getPrevWeekStart());
+            model.addAttribute("nextCursor", weekCalendar.getNextWeekStart());
+            model.addAttribute("todayCursor", LocalDate.now().toString());
+        }
         model.addAttribute("selectedStatus", status == null ? "" : status);
         model.addAttribute("keyword", keyword == null ? "" : keyword);
         model.addAttribute("sort", normalizedSort);
@@ -141,12 +161,12 @@ public class FlowController {
         return "redirect:/flows/" + id;
     }
 
-    private LocalDate parseWeekStart(String weekStart) {
-        if (weekStart == null || weekStart.isBlank()) {
+    private LocalDate parseDate(String text) {
+        if (text == null || text.isBlank()) {
             return null;
         }
         try {
-            return LocalDate.parse(weekStart);
+            return LocalDate.parse(text);
         } catch (DateTimeParseException ex) {
             return null;
         }
