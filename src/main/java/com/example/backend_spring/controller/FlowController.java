@@ -44,6 +44,8 @@ public class FlowController {
             Model model) {
         String normalizedSort = "created_desc".equals(sort) ? "created_desc" : "created_asc";
         String toggleSort = "created_asc".equals(normalizedSort) ? "created_desc" : "created_asc";
+
+        model.addAttribute("flows", flowService.listFlows(status, keyword, normalizedSort));
         var flows = flowService.listFlows(status, keyword, normalizedSort);
         LocalDate requestedWeekStart = parseWeekStart(weekStart);
 
