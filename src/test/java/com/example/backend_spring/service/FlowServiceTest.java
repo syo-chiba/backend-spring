@@ -187,4 +187,44 @@ class FlowServiceTest {
         verify(stepRepo).save(next);
         verify(flowRepo).save(flow);
     }
+
+    @Test
+    void buildGanttView_shouldContainConfirmedAndProposedSegments() {
+        Flow flow = new Flow("面談", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 1L);
+        ReflectionTestUtils.setField(flow, "id", 20L);
+
+        FlowStep confirmed = new FlowStep(20L, 1, "A");
+        confirmed.confirm(LocalDateTime.of(2026, 2, 23, 10, 0), LocalDateTime.of(2026, 2, 23, 11, 0));
+
+        FlowStep active = new FlowStep(20L, 2, "B");
+        active.activate();
+        ReflectionTestUtils.setField(active, "id", 200L);
+
+        StepCandidate proposed = new StepCandidate(200L,
+                LocalDateTime.of(2026, 2, 24, 9, 0),
+                LocalDateTime.of(2026, 2, 24, 10, 0));
+
+        when(stepRepo.findByFlowIdOrderByStepOrder(20L)).thenReturn(List.of(confirmed, active));
+        when(candidateRepo.findByFlowStepIdOrderByStartAtAsc(200L)).thenReturn(List.of(proposed));
+
+        FlowService.FlowGanttView view = flowService.buildGanttView(List.of(flow));
+
+        assertEquals(1, view.getRows().size());
+        assertEquals(24, view.getHourLabels().size());
+        assertEquals("0", view.getHourLabels().get(0));
+        assertEquals("23", view.getHourLabels().get(23));
+
+        FlowService.FlowGanttRow row = view.getRows().get(0);
+        assertEquals("1/2 確定", row.getProgressText());
+        assertFalse(row.getWeeks().isEmpty());
+        assertEquals(7, row.getWeeks().get(0).getDays().size());
+
+        List<FlowService.GanttSegment> allSegments = row.getWeeks().stream()
+                .flatMap(week -> week.getDays().stream())
+                .flatMap(day -> day.getSegments().stream())
+                .collect(Collectors.toList());
+        assertEquals(2, allSegments.size());
+        assertTrue(allSegments.stream().anyMatch(s -> "CONFIRMED".equals(s.getStatus())));
+        assertTrue(allSegments.stream().anyMatch(s -> "PROPOSED".equals(s.getStatus())));
+    }
 }
