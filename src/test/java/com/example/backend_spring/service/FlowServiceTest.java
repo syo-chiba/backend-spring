@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -116,7 +117,7 @@ class FlowServiceTest {
 
         when(flowRepo.findById(30L)).thenReturn(Optional.of(flow));
         when(stepRepo.findByFlowIdAndStepOrder(30L, 1)).thenReturn(active);
-        when(candidateRepo.findFirstTimeConflictForOwner(eq(77L), any(LocalDateTime.class), any(LocalDateTime.class)))
+        when(candidateRepo.findFirstTimeConflictForOwner(eq(77L), any(), any(LocalDateTime.class), any(LocalDateTime.class)))
                 .thenReturn(Optional.of(conflict));
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
@@ -135,12 +136,31 @@ class FlowServiceTest {
 
         when(flowRepo.findById(31L)).thenReturn(Optional.of(flow));
         when(stepRepo.findByFlowIdAndStepOrder(31L, 1)).thenReturn(active);
-        when(candidateRepo.findFirstTimeConflictForOwner(eq(77L), any(LocalDateTime.class), any(LocalDateTime.class)))
+        when(candidateRepo.findFirstTimeConflictForOwner(eq(77L), any(), any(LocalDateTime.class), any(LocalDateTime.class)))
                 .thenReturn(Optional.empty());
+        when(stepRepo.findFirstConfirmedConflictForOwner(eq(77L), any(), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(Optional.empty());
+        when(candidateRepo.save(any(StepCandidate.class))).thenAnswer(invocation -> {
+            StepCandidate saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 501L);
+            return saved;
+        });
+        when(candidateRepo.findById(501L)).thenAnswer(invocation -> {
+            Long id = invocation.getArgument(0);
+            StepCandidate c = new StepCandidate(1L, LocalDateTime.of(2026, 2, 23, 11, 0), LocalDateTime.of(2026, 2, 23, 12, 0));
+            ReflectionTestUtils.setField(c, "id", id);
+            return Optional.of(c);
+        });
+        when(candidateRepo.findByFlowStepIdOrderByStartAtAsc(1L)).thenAnswer(invocation -> {
+            StepCandidate c = new StepCandidate(1L, LocalDateTime.of(2026, 2, 23, 11, 0), LocalDateTime.of(2026, 2, 23, 12, 0));
+            ReflectionTestUtils.setField(c, "id", 501L);
+            return List.of(c);
+        });
+        when(stepRepo.findByFlowIdAndStepOrder(31L, 2)).thenReturn(null);
 
         flowService.addCandidateToActiveStep(31L, LocalDateTime.of(2026, 2, 23, 11, 0));
 
-        verify(candidateRepo).save(any(StepCandidate.class));
+        verify(candidateRepo, times(2)).save(any(StepCandidate.class));
     }
 
     @Test
@@ -152,12 +172,31 @@ class FlowServiceTest {
 
         when(flowRepo.findById(32L)).thenReturn(Optional.of(flow));
         when(stepRepo.findByFlowIdAndStepOrder(32L, 1)).thenReturn(active);
-        when(candidateRepo.findFirstTimeConflictForOwner(eq(88L), any(LocalDateTime.class), any(LocalDateTime.class)))
+        when(candidateRepo.findFirstTimeConflictForOwner(eq(88L), any(), any(LocalDateTime.class), any(LocalDateTime.class)))
                 .thenReturn(Optional.empty());
+        when(stepRepo.findFirstConfirmedConflictForOwner(eq(88L), any(), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(Optional.empty());
+        when(candidateRepo.save(any(StepCandidate.class))).thenAnswer(invocation -> {
+            StepCandidate saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 502L);
+            return saved;
+        });
+        when(candidateRepo.findById(502L)).thenAnswer(invocation -> {
+            Long id = invocation.getArgument(0);
+            StepCandidate c = new StepCandidate(1L, LocalDateTime.of(2026, 2, 23, 10, 0), LocalDateTime.of(2026, 2, 23, 11, 0));
+            ReflectionTestUtils.setField(c, "id", id);
+            return Optional.of(c);
+        });
+        when(candidateRepo.findByFlowStepIdOrderByStartAtAsc(1L)).thenAnswer(invocation -> {
+            StepCandidate c = new StepCandidate(1L, LocalDateTime.of(2026, 2, 23, 10, 0), LocalDateTime.of(2026, 2, 23, 11, 0));
+            ReflectionTestUtils.setField(c, "id", 502L);
+            return List.of(c);
+        });
+        when(stepRepo.findByFlowIdAndStepOrder(32L, 2)).thenReturn(null);
 
         flowService.addCandidateToActiveStep(32L, LocalDateTime.of(2026, 2, 23, 10, 0));
 
-        verify(candidateRepo).save(any(StepCandidate.class));
+        verify(candidateRepo, times(2)).save(any(StepCandidate.class));
     }
 
     @Test

@@ -212,6 +212,28 @@ public class FlowController {
         return "redirect:/flows/" + id + "/edit";
     }
 
+    @PostMapping("/{id}/steps/{stepId}/finalize")
+    @PreAuthorize("@flowAuthorization.canManageFlow(#id, authentication)")
+    public String finalizeStep(
+            @PathVariable Long id,
+            @PathVariable Long stepId,
+            @RequestParam Long participantId,
+            @RequestParam String startDate,
+            @RequestParam Integer startHour,
+            RedirectAttributes redirectAttributes) {
+        try {
+            flowService.finalizeStepAssignmentAndSchedule(
+                    id,
+                    stepId,
+                    participantId,
+                    parseDateAndHour(startDate, startHour));
+            redirectAttributes.addFlashAttribute("message", "担当ユーザーと面談設定日時を確定しました。");
+        } catch (IllegalArgumentException ex) {
+            redirectAttributes.addFlashAttribute("error", ex.getMessage());
+        }
+        return "redirect:/flows/" + id + "/edit";
+    }
+
     @PostMapping("/{id}/steps/{stepId}/assignee")
     @PreAuthorize("@flowAuthorization.canManageFlow(#id, authentication)")
     public String updateAssignee(

@@ -234,6 +234,36 @@ public class FlowService {
         }
 
         LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
+        assertNoOwnerTimeOverlap(flow, startAt, endAt, stepId);
+        step.confirm(startAt, endAt);
+        stepRepo.save(step);
+    }
+
+    @Transactional
+    public void finalizeStepAssignmentAndSchedule(
+            Long flowId,
+            Long stepId,
+            Long participantId,
+            LocalDateTime startAt) {
+        validateReservableDateTime(startAt, "面談設定日時");
+
+        Flow flow = getFlow(flowId);
+        FlowStep step = stepRepo.findById(stepId)
+                .orElseThrow(() -> new IllegalArgumentException("ステップが見つかりません。stepId=" + stepId));
+        if (!step.getFlowId().equals(flowId)) {
+            throw new IllegalArgumentException("指定されたフローのステップではありません。");
+        }
+
+        Participant participant = participantRepo.findById(participantId)
+                .orElseThrow(() -> new IllegalArgumentException("参加者が見つかりません。participantId=" + participantId));
+        if (!"USER".equals(participant.getParticipantType())) {
+            throw new IllegalArgumentException("担当ユーザーとして設定できない参加者です。");
+        }
+
+        LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
+        assertNoOwnerTimeOverlap(flow, startAt, endAt, stepId);
+
+        step.reassignParticipant(participant.getId(), participant.getDisplayName());
         step.confirm(startAt, endAt);
         stepRepo.save(step);
     }
@@ -363,7 +393,7 @@ public class FlowService {
 
         LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
 
-        assertNoOwnerTimeOverlap(flow, startAt, endAt);
+        assertNoOwnerTimeOverlap(flow, startAt, endAt, null);
 
         StepCandidate created = candidateRepo.save(new StepCandidate(active.getId(), startAt, endAt));
         // New behavior: when a date/time is entered, it is fixed immediately.
@@ -619,12 +649,27 @@ public class FlowService {
         return "calendar-event-proposed";
     }
 
-    private void assertNoOwnerTimeOverlap(Flow flow, LocalDateTime newStartAt, LocalDateTime newEndAt) {
-        var conflict = candidateRepo.findFirstTimeConflictForOwner(flow.getCreatedByUserId(), newStartAt, newEndAt);
-        if (conflict.isPresent()) {
-            var c = conflict.get();
+    private void assertNoOwnerTimeOverlap(Flow flow, LocalDateTime newStartAt, LocalDateTime newEndAt, Long excludeStepId) {
+        Long excludeFlowStepId = excludeStepId;
+        var candidateConflict = candidateRepo.findFirstTimeConflictForOwner(
+                flow.getCreatedByUserId(),
+                excludeFlowStepId,
+                newStartAt,
+                newEndAt);
+        if (candidateConflict.isPresent()) {
+            var c = candidateConflict.get();
             throw new IllegalArgumentException(
                     "\u5019\u88dc\u6642\u9593\u304c\u91cd\u8907\u3057\u3066\u3044\u307e\u3059: \u30d5\u30ed\u30fc=" + c.getFlowTitle()
+                            + ", \u53c2\u52a0\u8005=" + c.getParticipantName()
+                            + ", \u65e2\u5b58=" + c.getStartAt() + " - " + c.getEndAt());
+        }
+
+        var confirmedConflict = stepRepo.findFirstConfirmedConflictForOwner(
+                flow.getCreatedByUserId(), excludeStepId, newStartAt, newEndAt);
+        if (confirmedConflict.isPresent()) {
+            var c = confirmedConflict.get();
+            throw new IllegalArgumentException(
+                    "\u78ba\u5b9a\u6e08\u307f\u6642\u9593\u304c\u91cd\u8907\u3057\u3066\u3044\u307e\u3059: \u30d5\u30ed\u30fc=" + c.getFlowTitle()
                             + ", \u53c2\u52a0\u8005=" + c.getParticipantName()
                             + ", \u65e2\u5b58=" + c.getStartAt() + " - " + c.getEndAt());
         }

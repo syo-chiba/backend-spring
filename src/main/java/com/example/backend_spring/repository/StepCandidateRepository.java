@@ -37,6 +37,7 @@ public interface StepCandidateRepository extends JpaRepository<StepCandidate, Lo
             LEFT JOIN participants p ON p.id = fs.participant_id
             WHERE ((:createdByUserId IS NULL AND f.created_by_user_id IS NULL) OR f.created_by_user_id = :createdByUserId)
               AND sc.status IN ('PROPOSED', 'SELECTED')
+              AND (:excludeFlowStepId IS NULL OR sc.flow_step_id <> :excludeFlowStepId)
               AND sc.start_at < :newEndAt
               AND sc.end_at > :newStartAt
             ORDER BY sc.start_at ASC
@@ -44,6 +45,7 @@ public interface StepCandidateRepository extends JpaRepository<StepCandidate, Lo
             """, nativeQuery = true)
     Optional<ConflictCandidateView> findFirstTimeConflictForOwner(
             @Param("createdByUserId") Long createdByUserId,
+            @Param("excludeFlowStepId") Long excludeFlowStepId,
             @Param("newStartAt") LocalDateTime newStartAt,
             @Param("newEndAt") LocalDateTime newEndAt);
 
