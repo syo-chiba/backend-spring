@@ -3,6 +3,7 @@ package com.example.backend_spring.controller;
 import java.security.Principal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -201,10 +202,10 @@ public class FlowController {
             @PathVariable Long id,
             @PathVariable Long stepId,
             @RequestParam String startDate,
-            @RequestParam Integer startHour,
+            @RequestParam String startTime,
             RedirectAttributes redirectAttributes) {
         try {
-            flowService.updateConfirmedStepSchedule(id, stepId, parseDateAndHour(startDate, startHour));
+            flowService.updateConfirmedStepSchedule(id, stepId, parseDateAndTime(startDate, startTime));
             redirectAttributes.addFlashAttribute("message", "面談設定日時を更新しました。");
         } catch (IllegalArgumentException ex) {
             redirectAttributes.addFlashAttribute("error", ex.getMessage());
@@ -219,14 +220,14 @@ public class FlowController {
             @PathVariable Long stepId,
             @RequestParam Long participantId,
             @RequestParam String startDate,
-            @RequestParam Integer startHour,
+            @RequestParam String startTime,
             RedirectAttributes redirectAttributes) {
         try {
             flowService.finalizeStepAssignmentAndSchedule(
                     id,
                     stepId,
                     participantId,
-                    parseDateAndHour(startDate, startHour));
+                    parseDateAndTime(startDate, startTime));
             redirectAttributes.addFlashAttribute("message", "担当ユーザーと面談設定日時を確定しました。");
         } catch (IllegalArgumentException ex) {
             redirectAttributes.addFlashAttribute("error", ex.getMessage());
@@ -263,10 +264,10 @@ public class FlowController {
     public String addCandidate(
             @PathVariable Long id,
             @RequestParam String startDate,
-            @RequestParam Integer startHour,
+            @RequestParam String startTime,
             RedirectAttributes redirectAttributes) {
         try {
-            flowService.addCandidateToActiveStep(id, parseDateAndHour(startDate, startHour));
+            flowService.addCandidateToActiveStep(id, parseDateAndTime(startDate, startTime));
             redirectAttributes.addFlashAttribute("message", "日時を設定しました。");
         } catch (IllegalArgumentException | IllegalStateException ex) {
             redirectAttributes.addFlashAttribute("error", ex.getMessage());
@@ -300,15 +301,16 @@ public class FlowController {
         }
     }
 
-    private LocalDateTime parseDateAndHour(String startDate, Integer startHour) {
+    private LocalDateTime parseDateAndTime(String startDate, String startTime) {
         try {
             LocalDate date = LocalDate.parse(startDate);
-            if (startHour == null || startHour < 0 || startHour > 23) {
-                throw new IllegalArgumentException("設定時間(時)は0〜23で指定してください。");
+            LocalTime time = LocalTime.parse(startTime);
+            if (!(time.getMinute() == 0 || time.getMinute() == 30) || time.getSecond() != 0 || time.getNano() != 0) {
+                throw new IllegalArgumentException("設定時間は30分刻みで指定してください。");
             }
-            return date.atTime(startHour, 0);
+            return date.atTime(time);
         } catch (DateTimeParseException ex) {
-            throw new IllegalArgumentException("設定日付の形式が不正です。");
+            throw new IllegalArgumentException("設定日付または設定時間の形式が不正です。");
         }
     }
 

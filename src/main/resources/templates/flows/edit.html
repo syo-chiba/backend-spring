@@ -71,7 +71,7 @@
         <td>
           <div th:if="${step.confirmedStartAt != null}">
             <div>設定日付 <b th:text="${#temporals.format(step.confirmedStartAt, 'yyyy年M月d日')}">2026年3月10日</b></div>
-            <div>設定時間 <b th:text="${#temporals.format(step.confirmedStartAt, 'H')} + '時～'">10時～</b></div>
+            <div>設定時間 <b th:text="${#temporals.format(step.confirmedStartAt, 'H時mm分')} + '～'">10時30分～</b></div>
           </div>
           <span th:if="${step.confirmedStartAt == null}" class="muted">未設定</span>
         </td>
@@ -90,12 +90,12 @@
                    th:value="${step.confirmedStartAt != null ? #temporals.format(step.confirmedStartAt, 'yyyy-MM-dd') : minDate}"
                    th:attr="min=${minDate},max=${maxDate}"
                    style="max-width:170px; margin-top:0;" />
-            <select name="startHour" required style="max-width:120px; margin-top:0;">
-              <option th:each="h : ${#numbers.sequence(0,23)}"
-                      th:value="${h}"
-                      th:selected="${step.confirmedStartAt != null ? h == step.confirmedStartAt.hour : h == 9}"
-                      th:text="${h} + '時～'">10時～</option>
-            </select>
+            <input type="time"
+                   name="startTime"
+                   required
+                   step="1800"
+                   th:value="${step.confirmedStartAt != null ? #temporals.format(step.confirmedStartAt, 'HH:mm') : '09:00'}"
+                   style="max-width:140px; margin-top:0;" />
             <button class="btn btn-secondary" type="submit">担当・日時を確定</button>
           </form>
         </td>

@@ -105,9 +105,7 @@
           </div>
           <div class="row">
             <label>設定時間</label>
-            <select name="startHour" required>
-              <option th:each="h : ${#numbers.sequence(0,23)}" th:value="${h}" th:text="${h} + '時～'">10時～</option>
-            </select>
+            <input type="time" name="startTime" required step="1800" value="09:00" />
           </div>
         </div>
         <button class="btn btn-primary" type="submit">設定</button>

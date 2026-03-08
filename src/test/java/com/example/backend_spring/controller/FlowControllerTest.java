@@ -83,7 +83,7 @@ class FlowControllerTest {
     void addCandidate_whenSuccess_thenRedirectWithSuccessMessage() throws Exception {
         mockMvc.perform(post("/flows/10/candidates")
                         .param("startDate", "2026-02-23")
-                        .param("startHour", "10"))
+                        .param("startTime", "10:30"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/flows/10"))
                 .andExpect(flash().attributeExists("message"));
