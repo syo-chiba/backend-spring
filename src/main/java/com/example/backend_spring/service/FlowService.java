@@ -309,7 +309,9 @@ public class FlowService {
 
         assertNoOwnerTimeOverlap(flow, startAt, endAt);
 
-        candidateRepo.save(new StepCandidate(active.getId(), startAt, endAt));
+        StepCandidate created = candidateRepo.save(new StepCandidate(active.getId(), startAt, endAt));
+        // New behavior: when a date/time is entered, it is fixed immediately.
+        selectCandidateForActiveStep(flowId, created.getId());
     }
 
     @Transactional
@@ -478,10 +480,38 @@ public class FlowService {
 
     private String buildTooltip(Flow flow, String participantName, String status, LocalDateTime startAt, LocalDateTime endAt) {
         return buildEventTitle(flow, participantName)
-                + " [" + status + "] "
+                + " [" + toStatusLabelJa(status) + "] "
                 + startAt.toString()
                 + " - "
                 + endAt.toString();
+    }
+
+    private String toStatusLabelJa(String status) {
+        if (status == null || status.isBlank()) {
+            return "";
+        }
+        switch (status) {
+            case "IN_PROGRESS":
+                return "進行中";
+            case "DONE":
+                return "完了";
+            case "PENDING":
+                return "未着手";
+            case "ACTIVE":
+                return "対応中";
+            case "CONFIRMED":
+                return "確定";
+            case "SKIPPED":
+                return "スキップ";
+            case "PROPOSED":
+                return "候補";
+            case "SELECTED":
+                return "選択済み";
+            case "REJECTED":
+                return "却下";
+            default:
+                return status;
+        }
     }
 
     private CalendarEvent toWeeklyCalendarEvent(CalendarSourceEvent event) {

@@ -228,7 +228,7 @@ public class FlowController {
             RedirectAttributes redirectAttributes) {
         try {
             flowService.addCandidateToActiveStep(id, LocalDateTime.parse(startAt, DT_LOCAL));
-            redirectAttributes.addFlashAttribute("message", "候補を追加しました。");
+            redirectAttributes.addFlashAttribute("message", "日時を設定しました。");
         } catch (IllegalArgumentException | IllegalStateException ex) {
             redirectAttributes.addFlashAttribute("error", ex.getMessage());
         }

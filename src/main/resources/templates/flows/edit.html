@@ -65,7 +65,7 @@
         <td th:text="${step.stepOrder}">1</td>
         <td th:text="${step.participantName}">参加者A</td>
         <td>
-          <span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(step.status)}" th:text="${step.status}">ACTIVE</span>
+          <span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(step.status)}" th:text="${T(com.example.backend_spring.view.StatusLabelUtil).toJa(step.status)}">対応中</span>
         </td>
         <td>
           <form method="post" th:action="@{'/flows/' + ${flow.id} + '/steps/' + ${step.id} + '/assignee'}" style="display:flex; gap:8px; align-items:center;">
