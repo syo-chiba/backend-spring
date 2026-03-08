@@ -36,6 +36,7 @@ public class FlowService {
     private static final List<String> WEEKDAY_HEADERS = List.of("\u65E5", "\u6708", "\u706B", "\u6C34", "\u6728", "\u91D1", "\u571F");
     private static final DateTimeFormatter TIME_LABEL_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_LABEL_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd");
+    private static final DateTimeFormatter SCHEDULE_LABEL_FORMAT = DateTimeFormatter.ofPattern("M月d日 HH:mm");
     private static final double HOUR_HEIGHT_PX = 44.0;
 
     private final FlowRepository flowRepo;
@@ -169,6 +170,42 @@ public class FlowService {
         return listFlows(null, null, "created_asc");
     }
 
+    public Map<Long, String> buildFlowScheduleLabels(List<Flow> flows) {
+        Map<Long, String> labels = new HashMap<>();
+        if (flows == null || flows.isEmpty()) {
+            return labels;
+        }
+
+        for (Flow flow : flows) {
+            if (flow == null || flow.getId() == null) {
+                continue;
+            }
+
+            List<FlowStep> steps = stepRepo.findByFlowIdOrderByStepOrder(flow.getId());
+            Optional<FlowStep> confirmed = steps.stream()
+                    .filter(s -> s.getConfirmedStartAt() != null && s.getConfirmedEndAt() != null)
+                    .min(Comparator.comparing(FlowStep::getStepOrder));
+
+            if (confirmed.isPresent()) {
+                FlowStep step = confirmed.get();
+                labels.put(flow.getId(), formatScheduleLabel(step.getConfirmedStartAt(), step.getConfirmedEndAt()));
+                continue;
+            }
+
+            FlowStep active = stepRepo.findByFlowIdAndStepOrder(flow.getId(), flow.getCurrentStepOrder());
+            if (active != null && active.getId() != null) {
+                Optional<StepCandidate> candidate = candidateRepo.findByFlowStepIdOrderByStartAtAsc(active.getId()).stream()
+                        .filter(c -> BLOCKING_CANDIDATE_STATUSES.contains(c.getStatus()))
+                        .findFirst();
+                if (candidate.isPresent()) {
+                    StepCandidate c = candidate.get();
+                    labels.put(flow.getId(), formatScheduleLabel(c.getStartAt(), c.getEndAt()));
+                }
+            }
+        }
+        return labels;
+    }
+
     public Flow getFlow(Long id) {
         return flowRepo.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Flow not found: " + id));
@@ -180,6 +217,25 @@ public class FlowService {
         Flow flow = getFlow(id);
         flow.updateBasics(title, durationMinutes, startFrom);
         flowRepo.save(flow);
+    }
+
+    @Transactional
+    public void updateConfirmedStepSchedule(Long flowId, Long stepId, LocalDateTime startAt) {
+        validateReservableDateTime(startAt, "面談設定日時");
+
+        Flow flow = getFlow(flowId);
+        FlowStep step = stepRepo.findById(stepId)
+                .orElseThrow(() -> new IllegalArgumentException("ステップが見つかりません。stepId=" + stepId));
+        if (!step.getFlowId().equals(flowId)) {
+            throw new IllegalArgumentException("指定されたフローのステップではありません。");
+        }
+        if (step.getConfirmedStartAt() == null || step.getConfirmedEndAt() == null) {
+            throw new IllegalArgumentException("未設定のステップはこの画面から変更できません。");
+        }
+
+        LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
+        step.confirm(startAt, endAt);
+        stepRepo.save(step);
     }
 
     @Transactional
@@ -544,6 +600,13 @@ public class FlowService {
 
     private String formatTimeRange(LocalDateTime startAt, LocalDateTime endAt) {
         return TIME_LABEL_FORMAT.format(startAt) + " - " + TIME_LABEL_FORMAT.format(endAt);
+    }
+
+    private String formatScheduleLabel(LocalDateTime startAt, LocalDateTime endAt) {
+        if (startAt == null || endAt == null) {
+            return "-";
+        }
+        return SCHEDULE_LABEL_FORMAT.format(startAt) + " ~ " + TIME_LABEL_FORMAT.format(endAt);
     }
 
     private String toTypeClass(String status) {

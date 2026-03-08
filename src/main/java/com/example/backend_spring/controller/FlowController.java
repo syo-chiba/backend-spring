@@ -62,9 +62,11 @@ public class FlowController {
         String toggleSort = "created_asc".equals(normalizedSort) ? "created_desc" : "created_asc";
         String normalizedView = "month".equals(view) ? "month" : "week";
         var flows = flowService.listFlows(status, keyword, normalizedSort);
+        var flowScheduleLabels = flowService.buildFlowScheduleLabels(flows);
         LocalDate requestedCursor = parseDate(cursor != null ? cursor : weekStart);
 
         model.addAttribute("flows", flows);
+        model.addAttribute("flowScheduleLabels", flowScheduleLabels);
         model.addAttribute("viewMode", normalizedView);
         if ("month".equals(normalizedView)) {
             var monthCalendar = flowService.buildMonthlyCalendarView(flows, requestedCursor);
@@ -184,16 +186,32 @@ public class FlowController {
             @PathVariable Long id,
             @RequestParam String title,
             @RequestParam int durationMinutes,
-            @RequestParam String startFrom,
             RedirectAttributes redirectAttributes) {
         try {
-            flowService.updateFlow(id, title, durationMinutes, LocalDateTime.parse(startFrom, DT_LOCAL));
+            var flow = flowService.getFlow(id);
+            flowService.updateFlow(id, title, durationMinutes, flow.getStartFrom());
             redirectAttributes.addFlashAttribute("message", "更新しました。");
         } catch (IllegalArgumentException ex) {
             redirectAttributes.addFlashAttribute("error", ex.getMessage());
             return "redirect:/flows/" + id + "/edit";
         }
         return "redirect:/flows/" + id;
+    }
+
+    @PostMapping("/{id}/steps/{stepId}/schedule")
+    @PreAuthorize("@flowAuthorization.canManageFlow(#id, authentication)")
+    public String updateStepSchedule(
+            @PathVariable Long id,
+            @PathVariable Long stepId,
+            @RequestParam String startAt,
+            RedirectAttributes redirectAttributes) {
+        try {
+            flowService.updateConfirmedStepSchedule(id, stepId, LocalDateTime.parse(startAt, DT_LOCAL));
+            redirectAttributes.addFlashAttribute("message", "面談設定日時を更新しました。");
+        } catch (IllegalArgumentException ex) {
+            redirectAttributes.addFlashAttribute("error", ex.getMessage());
+        }
+        return "redirect:/flows/" + id + "/edit";
     }
 
     @PostMapping("/{id}/steps/{stepId}/assignee")
