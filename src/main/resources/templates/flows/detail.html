@@ -98,9 +98,17 @@
       <h3 th:if="${canOperateActiveStep}">日時を設定</h3>
       <form method="post" th:if="${canOperateActiveStep}" th:action="@{'/flows/' + ${flow.id} + '/candidates'}">
         <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
-        <div class="row">
-          <label>開始日時</label>
-          <input id="startAtPicker" type="text" name="startAt" required placeholder="YYYY-MM-DDTHH:mm" />
+        <div class="grid-2">
+          <div class="row">
+            <label>設定日付</label>
+            <input type="date" name="startDate" required th:attr="min=${minDate},max=${maxDate}" />
+          </div>
+          <div class="row">
+            <label>設定時間</label>
+            <select name="startHour" required>
+              <option th:each="h : ${#numbers.sequence(0,23)}" th:value="${h}" th:text="${h} + '時～'">10時～</option>
+            </select>
+          </div>
         </div>
         <button class="btn btn-primary" type="submit">設定</button>
       </form>
@@ -113,21 +121,5 @@
   </section>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<script th:inline="javascript">
-  const minDate = /*[[${minDate}]]*/ '2026-02-21';
-  const maxDate = /*[[${maxDate}]]*/ '2026-05-21';
-  const picker = document.getElementById('startAtPicker');
-
-  if (picker) {
-    flatpickr(picker, {
-      enableTime: true,
-      dateFormat: "Y-m-d\\TH:i",
-      minDate: minDate,
-      maxDate: maxDate,
-      defaultDate: minDate
-    });
-  }
-</script>
 </body>
 </html>
