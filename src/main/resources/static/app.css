@@ -238,12 +238,21 @@ th { background: #f8fafc; }
   position: absolute;
   left: 4px;
   right: 4px;
+  display: block;
   border-radius: 8px;
   padding: 4px 6px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   overflow: hidden;
   font-size: 10px;
   line-height: 1.2;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.calendar-event:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.18);
 }
 
 .calendar-event-title {
@@ -332,12 +341,21 @@ th { background: #f8fafc; }
 }
 
 .month-event {
+  display: block;
   margin-top: 6px;
   border-radius: 8px;
   padding: 4px 6px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   font-size: 10px;
   line-height: 1.2;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.month-event:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.14);
 }
 
 .month-event-title {

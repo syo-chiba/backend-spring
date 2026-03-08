@@ -129,14 +129,15 @@
             </div>
 
             <div class="calendar-day-col" th:each="day : ${weekCalendar.days}">
-                <div class="calendar-event"
-                     th:each="event : ${day.events}"
-                     th:classappend="' ' + ${event.typeClass}"
-                     th:style="${event.style}"
-                     th:title="${event.tooltip}">
+                <a class="calendar-event"
+                   th:each="event : ${day.events}"
+                   th:classappend="' ' + ${event.typeClass}"
+                   th:style="${event.style}"
+                   th:title="${event.tooltip}"
+                   th:href="${event.detailUrl}">
                     <div class="calendar-event-title" th:text="${event.title}">#1 面談 / Aさん</div>
                     <div class="calendar-event-time" th:text="${event.timeLabel}">3/2 10:00 - 3/2 11:00</div>
-                </div>
+                </a>
             </div>
         </div>
 
@@ -153,13 +154,14 @@
                         3/1
                     </div>
 
-                    <div class="month-event"
-                         th:each="event : ${day.events}"
-                         th:classappend="' ' + ${event.typeClass}"
-                         th:title="${event.tooltip}">
+                    <a class="month-event"
+                       th:each="event : ${day.events}"
+                       th:classappend="' ' + ${event.typeClass}"
+                       th:title="${event.tooltip}"
+                       th:href="${event.detailUrl}">
                         <div class="month-event-title" th:text="${event.title}">#1 面談 / Aさん</div>
                         <div class="month-event-time" th:text="${event.timeLabel}">10:00 - 11:00</div>
-                    </div>
+                    </a>
                 </div>
             </th:block>
         </div>
