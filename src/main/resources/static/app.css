@@ -107,6 +107,15 @@ th, td {
 }
 th { background: #f8fafc; }
 
+.table-row-link {
+  cursor: pointer;
+  transition: background-color 0.08s ease;
+}
+
+.table-row-link:hover td {
+  background: #f8fafc;
+}
+
 .badge {
   display: inline-block;
   border-radius: 999px;

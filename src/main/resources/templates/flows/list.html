@@ -66,8 +66,10 @@
                     </a>
                 </th>
             </tr>
-            <tr th:each="flow : ${flows}">
-                <td><a th:href="@{'/flows/' + ${flow.id}}" th:text="${flow.id}">1</a></td>
+            <tr th:each="flow : ${flows}"
+                class="table-row-link"
+                th:attr="onclick=|window.location.href='/flows/${flow.id}'|">
+                <td th:text="${flow.id}">1</td>
                 <td th:text="${flow.title}">定例会議</td>
                 <td><span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(flow.status)}" th:text="${T(com.example.backend_spring.view.StatusLabelUtil).toJa(flow.status)}">進行中</span></td>
                 <td th:text="${flowScheduleLabels[flow.id] != null ? flowScheduleLabels[flow.id] : '-'}">3月9日 12:00 ~ 13:00</td>
