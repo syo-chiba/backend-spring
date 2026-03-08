@@ -102,7 +102,6 @@ public class FlowController {
     public String create(
             @RequestParam String title,
             @RequestParam int durationMinutes,
-            @RequestParam String startFrom,
             @RequestParam(required = false) String participants,
             @RequestParam(required = false) String externalParticipants,
             @RequestParam(required = false) List<Long> participantUserIds,
@@ -110,7 +109,7 @@ public class FlowController {
             RedirectAttributes redirectAttributes) {
 
         try {
-            LocalDateTime start = LocalDateTime.parse(startFrom, DT_LOCAL);
+            LocalDateTime start = flowService.getReservableMinDate().atStartOfDay();
 
             String rawExternalParticipants = externalParticipants;
             if ((rawExternalParticipants == null || rawExternalParticipants.isBlank())

@@ -72,7 +72,6 @@ class FlowControllerTest {
         mockMvc.perform(post("/flows")
                         .param("title", "meeting")
                         .param("durationMinutes", "60")
-                        .param("startFrom", "2026-02-22T10:00")
                         .param("participantUserIds", "1")
                         .param("externalParticipants", "A\nB"))
                 .andExpect(status().is3xxRedirection())
@@ -113,7 +112,6 @@ class FlowControllerTest {
                         .principal(() -> "admin")
                         .param("title", "meeting")
                         .param("durationMinutes", "60")
-                        .param("startFrom", "2026-02-22T10:00")
                         .param("participantUserIds", "1", "2")
                         .param("externalParticipants", "A\nB"))
                 .andExpect(status().is3xxRedirection())
@@ -122,6 +120,7 @@ class FlowControllerTest {
         assertEquals(7L, flowService.createdByUserId);
         assertEquals("meeting", flowService.lastTitle);
         assertEquals(60, flowService.lastDurationMinutes);
+        assertEquals(flowService.getReservableMinDate().atStartOfDay(), flowService.lastStartFrom);
         assertEquals(List.of(1L, 2L), flowService.lastParticipantIds);
         assertTrue(flowService.lastParticipants.containsAll(List.of("A", "B")));
     }
