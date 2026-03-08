@@ -30,7 +30,6 @@
   <section class="card" style="margin-bottom:16px;">
     <p>所要時間: <b><span th:text="${flow.durationMinutes}">60</span></b> 分</p>
     <p>ステータス: <span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(flow.status)}" th:text="${T(com.example.backend_spring.view.StatusLabelUtil).toJa(flow.status)}">進行中</span></p>
-    <p>現在ステップ: <b th:text="${flow.currentStepOrder}">1</b></p>
     <p>候補可能期間: <b th:text="${minDate}">2026-02-21</b> 〜 <b th:text="${maxDate}">2026-05-21</b></p>
     <div style="display:flex; gap:8px;" th:if="${canManageFlow}">
       <a class="btn btn-secondary" th:href="@{'/flows/' + ${flow.id} + '/edit'}">編集</a>

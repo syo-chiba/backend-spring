@@ -184,10 +184,10 @@ public class FlowController {
             @PathVariable Long id,
             @RequestParam String title,
             @RequestParam int durationMinutes,
+            @RequestParam String startFrom,
             RedirectAttributes redirectAttributes) {
         try {
-            var flow = flowService.getFlow(id);
-            flowService.updateFlow(id, title, durationMinutes, flow.getStartFrom());
+            flowService.updateFlow(id, title, durationMinutes, LocalDateTime.parse(startFrom, DT_LOCAL));
             redirectAttributes.addFlashAttribute("message", "更新しました。");
         } catch (IllegalArgumentException ex) {
             redirectAttributes.addFlashAttribute("error", ex.getMessage());
