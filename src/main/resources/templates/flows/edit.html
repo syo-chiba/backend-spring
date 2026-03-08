@@ -90,12 +90,14 @@
                    th:value="${step.confirmedStartAt != null ? #temporals.format(step.confirmedStartAt, 'yyyy-MM-dd') : minDate}"
                    th:attr="min=${minDate},max=${maxDate}"
                    style="max-width:170px; margin-top:0;" />
-            <input type="time"
-                   name="startTime"
-                   required
-                   step="1800"
-                   th:value="${step.confirmedStartAt != null ? #temporals.format(step.confirmedStartAt, 'HH:mm') : '09:00'}"
-                   style="max-width:140px; margin-top:0;" />
+            <select name="startTime" required style="max-width:140px; margin-top:0;">
+              <option th:each="i : ${#numbers.sequence(0,47)}"
+                      th:value="${T(java.lang.String).format('%02d:%02d', i / 2, (i % 2) * 30)}"
+                      th:selected="${step.confirmedStartAt != null ? #temporals.format(step.confirmedStartAt, 'HH:mm') == T(java.lang.String).format('%02d:%02d', i / 2, (i % 2) * 30) : i == 18}"
+                      th:text="${(i / 2)} + '時' + ((i % 2) == 0 ? '00分' : '30分')">
+                9時00分
+              </option>
+            </select>
             <button class="btn btn-secondary" type="submit">担当・日時を確定</button>
           </form>
         </td>
