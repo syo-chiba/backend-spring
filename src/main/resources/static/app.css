@@ -45,6 +45,33 @@ input, textarea, select {
   background: #fff;
 }
 
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+  margin-top: 0;
+  padding: 0;
+}
+
+.participant-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.participant-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.participant-option select {
+  margin-top: 0;
+}
+
 .btn {
   display: inline-block;
   border: none;

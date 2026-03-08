@@ -6,9 +6,12 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.springframework.security.core.Authentication;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,7 +21,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
+import com.example.backend_spring.domain.Participant;
+import com.example.backend_spring.repository.ParticipantRepository;
 import com.example.backend_spring.repository.UserAccountRepository;
+import com.example.backend_spring.security.FlowAuthorization;
 import com.example.backend_spring.service.FlowService;
 
 @Controller
@@ -27,12 +33,20 @@ public class FlowController {
 
     private final FlowService flowService;
     private final UserAccountRepository userRepo;
+    private final ParticipantRepository participantRepo;
+    private final FlowAuthorization flowAuthorization;
 
     private static final DateTimeFormatter DT_LOCAL = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm");
 
-    public FlowController(FlowService flowService, UserAccountRepository userRepo) {
+    public FlowController(
+            FlowService flowService,
+            UserAccountRepository userRepo,
+            ParticipantRepository participantRepo,
+            FlowAuthorization flowAuthorization) {
         this.flowService = flowService;
         this.userRepo = userRepo;
+        this.participantRepo = participantRepo;
+        this.flowAuthorization = flowAuthorization;
     }
 
     @GetMapping
@@ -80,6 +94,7 @@ public class FlowController {
     public String newForm(Model model) {
         model.addAttribute("minDate", flowService.getReservableMinDate());
         model.addAttribute("maxDate", flowService.getReservableMaxDate());
+        model.addAttribute("userParticipants", loadUserParticipants());
         return "flows/new";
     }
 
@@ -88,17 +103,27 @@ public class FlowController {
             @RequestParam String title,
             @RequestParam int durationMinutes,
             @RequestParam String startFrom,
-            @RequestParam String participants,
+            @RequestParam(required = false) String participants,
+            @RequestParam(required = false) String externalParticipants,
+            @RequestParam(required = false) List<Long> participantUserIds,
             Principal principal,
             RedirectAttributes redirectAttributes) {
 
         try {
             LocalDateTime start = LocalDateTime.parse(startFrom, DT_LOCAL);
 
-            List<String> participantList = Arrays.stream(participants.split("\\r?\\n"))
+            String rawExternalParticipants = externalParticipants;
+            if ((rawExternalParticipants == null || rawExternalParticipants.isBlank())
+                    && participants != null) {
+                // Backward compatibility with older form field name.
+                rawExternalParticipants = participants;
+            }
+
+            List<String> externalParticipantList = Arrays.stream((rawExternalParticipants == null ? "" : rawExternalParticipants).split("\\r?\\n"))
                     .map(String::trim)
                     .filter(s -> !s.isEmpty())
                     .collect(Collectors.toList());
+            List<Long> selectedParticipantIds = participantUserIds == null ? List.of() : participantUserIds;
 
             Long createdByUserId = null;
             if (principal != null) {
@@ -107,7 +132,13 @@ public class FlowController {
                         .orElse(null);
             }
 
-            Long flowId = flowService.createFlow(title, durationMinutes, start, createdByUserId, participantList);
+            Long flowId = flowService.createFlow(
+                    title,
+                    durationMinutes,
+                    start,
+                    createdByUserId,
+                    selectedParticipantIds,
+                    externalParticipantList);
             return "redirect:/flows/" + flowId;
         } catch (IllegalArgumentException ex) {
             redirectAttributes.addFlashAttribute("error", ex.getMessage());
@@ -116,7 +147,7 @@ public class FlowController {
     }
 
     @GetMapping("/{id}")
-    public String detail(@PathVariable Long id, Model model) {
+    public String detail(@PathVariable Long id, Model model, Authentication authentication) {
 
         var flow = flowService.getFlow(id);
         var steps = flowService.getSteps(id);
@@ -129,11 +160,69 @@ public class FlowController {
         model.addAttribute("candidates", candidates);
         model.addAttribute("minDate", flowService.getReservableMinDate());
         model.addAttribute("maxDate", flowService.getReservableMaxDate());
+        model.addAttribute("canManageFlow", flowAuthorization.canManageFlow(id, authentication));
+        model.addAttribute("canOperateActiveStep", flowAuthorization.canOperateActiveStep(id, authentication));
+        model.addAttribute("isAdmin", flowAuthorization.isAdmin(authentication));
 
         return "flows/detail";
     }
 
+    @GetMapping("/{id}/edit")
+    @PreAuthorize("@flowAuthorization.canManageFlow(#id, authentication)")
+    public String editForm(@PathVariable Long id, Model model) {
+        var flow = flowService.getFlow(id);
+        model.addAttribute("flow", flow);
+        model.addAttribute("steps", flowService.getSteps(id));
+        model.addAttribute("userParticipants", loadUserParticipants());
+        model.addAttribute("minDate", flowService.getReservableMinDate());
+        model.addAttribute("maxDate", flowService.getReservableMaxDate());
+        return "flows/edit";
+    }
+
+    @PostMapping("/{id}/edit")
+    @PreAuthorize("@flowAuthorization.canManageFlow(#id, authentication)")
+    public String update(
+            @PathVariable Long id,
+            @RequestParam String title,
+            @RequestParam int durationMinutes,
+            @RequestParam String startFrom,
+            RedirectAttributes redirectAttributes) {
+        try {
+            flowService.updateFlow(id, title, durationMinutes, LocalDateTime.parse(startFrom, DT_LOCAL));
+            redirectAttributes.addFlashAttribute("message", "更新しました。");
+        } catch (IllegalArgumentException ex) {
+            redirectAttributes.addFlashAttribute("error", ex.getMessage());
+            return "redirect:/flows/" + id + "/edit";
+        }
+        return "redirect:/flows/" + id;
+    }
+
+    @PostMapping("/{id}/steps/{stepId}/assignee")
+    @PreAuthorize("@flowAuthorization.canManageFlow(#id, authentication)")
+    public String updateAssignee(
+            @PathVariable Long id,
+            @PathVariable Long stepId,
+            @RequestParam Long participantId,
+            RedirectAttributes redirectAttributes) {
+        try {
+            flowService.reassignStepParticipant(id, stepId, participantId);
+            redirectAttributes.addFlashAttribute("message", "担当ユーザーを更新しました。");
+        } catch (IllegalArgumentException ex) {
+            redirectAttributes.addFlashAttribute("error", ex.getMessage());
+        }
+        return "redirect:/flows/" + id + "/edit";
+    }
+
+    @PostMapping("/{id}/delete")
+    @PreAuthorize("@flowAuthorization.canManageFlow(#id, authentication)")
+    public String delete(@PathVariable Long id, RedirectAttributes redirectAttributes) {
+        flowService.deleteFlow(id);
+        redirectAttributes.addFlashAttribute("message", "削除しました。");
+        return "redirect:/flows";
+    }
+
     @PostMapping("/{id}/candidates")
+    @PreAuthorize("@flowAuthorization.canOperateActiveStep(#id, authentication)")
     public String addCandidate(
             @PathVariable Long id,
             @RequestParam String startAt,
@@ -148,6 +237,7 @@ public class FlowController {
     }
 
     @PostMapping("/{id}/candidates/{candidateId}/select")
+    @PreAuthorize("@flowAuthorization.canOperateActiveStep(#id, authentication)")
     public String selectCandidate(
             @PathVariable Long id,
             @PathVariable Long candidateId,
@@ -170,5 +260,12 @@ public class FlowController {
         } catch (DateTimeParseException ex) {
             return null;
         }
+    }
+
+    private List<Participant> loadUserParticipants() {
+        return participantRepo.findAll().stream()
+                .filter(p -> "USER".equals(p.getParticipantType()))
+                .sorted(Comparator.comparing(Participant::getDisplayName, String.CASE_INSENSITIVE_ORDER))
+                .collect(Collectors.toList());
     }
 }

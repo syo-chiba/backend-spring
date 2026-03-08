@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ja" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8" />
+  <title>繝輔Ο繝ｼ邱ｨ髮・/title>
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+</head>
+<body>
+<main class="page">
+  <div class="top-bar">
+    <div>
+      <h1>繝輔Ο繝ｼ邱ｨ髮・/h1>
+      <p class="muted" th:text="'ID: ' + ${flow.id}">ID: 1</p>
+    </div>
+    <a class="btn btn-secondary" th:href="@{'/flows/' + ${flow.id}}">隧ｳ邏ｰ縺ｸ謌ｻ繧・/a>
+  </div>
+
+  <div th:if="${message}" class="alert alert-success" th:text="${message}"></div>
+  <div th:if="${error}" class="alert alert-error" th:text="${error}"></div>
+
+  <section class="card" style="margin-bottom:16px;">
+    <form method="post" th:action="@{'/flows/' + ${flow.id} + '/edit'}">
+      <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+      <div class="row">
+        <label>繧ｿ繧､繝医Ν</label>
+        <input name="title" required th:value="${flow.title}" />
+      </div>
+      <div class="row">
+        <label>謇隕∵凾髢難ｼ亥・・・/label>
+        <input type="number" min="1" max="720" name="durationMinutes" required th:value="${flow.durationMinutes}" />
+      </div>
+      <div class="row">
+        <label>隱ｿ謨ｴ髢句ｧ区律譎・/label>
+        <input id="startFromPicker" name="startFrom" required
+               th:value="${#temporals.format(flow.startFrom, 'yyyy-MM-dd''T''HH:mm')}"
+               placeholder="YYYY-MM-DDTHH:mm" />
+      </div>
+      <button class="btn btn-primary" type="submit">蝓ｺ譛ｬ諠・ｱ繧呈峩譁ｰ</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>諡・ｽ薙Θ繝ｼ繧ｶ繝ｼ莉倥￠譖ｿ縺・/h2>
+    <p class="muted">譌｢蟄倥せ繝・ャ繝励・諡・ｽ薙Θ繝ｼ繧ｶ繝ｼ繧貞､画峩縺ｧ縺阪∪縺吶・/p>
+
+    <div th:if="${#lists.isEmpty(userParticipants)}" class="muted">
+      諡・ｽ薙Θ繝ｼ繧ｶ繝ｼ蛟呵｣懊′縺ゅｊ縺ｾ縺帙ｓ縲ょ・縺ｫ邂｡逅・・判髱｢縺ｧ諡・ｽ薙Θ繝ｼ繧ｶ繝ｼ繧剃ｽ懈・縺励※縺上□縺輔＞縲・    </div>
+
+    <table th:if="${!#lists.isEmpty(steps)}">
+      <tr>
+        <th>鬆・分</th>
+        <th>迴ｾ蝨ｨ縺ｮ諡・ｽ・/th>
+        <th>迥ｶ諷・/th>
+        <th>螟画峩</th>
+      </tr>
+      <tr th:each="step : ${steps}">
+        <td th:text="${step.stepOrder}">1</td>
+        <td th:text="${step.participantName}">諡・ｽ楢・/td>
+        <td>
+          <span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(step.status)}" th:text="${step.status}">ACTIVE</span>
+        </td>
+        <td>
+          <form method="post" th:action="@{'/flows/' + ${flow.id} + '/steps/' + ${step.id} + '/assignee'}" style="display:flex; gap:8px; align-items:center;">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+            <select name="participantId" required style="max-width:260px;">
+              <option th:each="p : ${userParticipants}"
+                      th:value="${p.id}"
+                      th:selected="${p.id == step.participantId}"
+                      th:text="${p.displayName}">user</option>
+            </select>
+            <button class="btn btn-secondary" type="submit">譖ｴ譁ｰ</button>
+          </form>
+        </td>
+      </tr>
+    </table>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script th:inline="javascript">
+  const minDate = /*[[${minDate}]]*/ '2026-03-09';
+  const maxDate = /*[[${maxDate}]]*/ '2026-06-09';
+  const picker = document.getElementById('startFromPicker');
+  if (picker) {
+    flatpickr(picker, {
+      enableTime: true,
+      dateFormat: "Y-m-d\\TH:i",
+      minDate: minDate,
+      maxDate: maxDate
+    });
+  }
+</script>
+</body>
+</html>

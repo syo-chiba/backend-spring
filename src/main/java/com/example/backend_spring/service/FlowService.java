@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -58,14 +59,51 @@ public class FlowService {
 
     @Transactional
     public Long createFlow(String title, int durationMinutes, LocalDateTime startFrom, Long createdByUserId, List<String> participants) {
+        return createFlow(title, durationMinutes, startFrom, createdByUserId, List.of(), participants);
+    }
+
+    @Transactional
+    public Long createFlow(
+            String title,
+            int durationMinutes,
+            LocalDateTime startFrom,
+            Long createdByUserId,
+            List<Long> participantIds,
+            List<String> externalParticipants) {
         validateReservableDateTime(startFrom, "\u8abf\u6574\u958b\u59cb\u65e5\u6642");
+
+        if (participantIds == null || participantIds.isEmpty()) {
+            throw new IllegalArgumentException("担当ユーザーを1名以上選択してください。");
+        }
 
         Flow flow = new Flow(title, durationMinutes, startFrom, createdByUserId);
         Flow saved = flowRepo.save(flow);
 
         List<FlowStep> steps = new ArrayList<>();
         int order = 1;
-        for (String p : participants) {
+        Set<Long> seenParticipantIds = new java.util.LinkedHashSet<>();
+        List<Long> safeParticipantIds = participantIds == null ? List.of() : participantIds;
+        for (Long participantId : safeParticipantIds) {
+            if (participantId == null || !seenParticipantIds.add(participantId)) {
+                continue;
+            }
+            Participant participant = participantRepo.findById(participantId)
+                    .orElseThrow(() -> new IllegalArgumentException("参加者が見つかりません。participantId=" + participantId));
+
+            if (!"USER".equals(participant.getParticipantType())) {
+                throw new IllegalArgumentException("担当ユーザーとして選択できない参加者です。participantId=" + participantId);
+            }
+
+            FlowStep step = new FlowStep(saved.getId(), order, participant.getId(), participant.getDisplayName());
+            if (order == 1) {
+                step.activate();
+            }
+            steps.add(step);
+            order++;
+        }
+
+        List<String> safeExternalParticipants = externalParticipants == null ? List.of() : externalParticipants;
+        for (String p : safeExternalParticipants) {
             String name = p == null ? "" : p.trim();
             if (name.isEmpty()) {
                 continue;
@@ -86,6 +124,24 @@ public class FlowService {
 
         stepRepo.saveAll(steps);
         return saved.getId();
+    }
+
+    @Transactional
+    public void reassignStepParticipant(Long flowId, Long stepId, Long participantId) {
+        FlowStep step = stepRepo.findById(stepId)
+                .orElseThrow(() -> new IllegalArgumentException("ステップが見つかりません。stepId=" + stepId));
+        if (!step.getFlowId().equals(flowId)) {
+            throw new IllegalArgumentException("指定されたフローのステップではありません。");
+        }
+
+        Participant participant = participantRepo.findById(participantId)
+                .orElseThrow(() -> new IllegalArgumentException("参加者が見つかりません。participantId=" + participantId));
+        if (!"USER".equals(participant.getParticipantType())) {
+            throw new IllegalArgumentException("担当ユーザーとして設定できない参加者です。");
+        }
+
+        step.reassignParticipant(participant.getId(), participant.getDisplayName());
+        stepRepo.save(step);
     }
 
     public List<Flow> listFlows(String status, String keyword, String sort) {
@@ -116,6 +172,20 @@ public class FlowService {
     public Flow getFlow(Long id) {
         return flowRepo.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Flow not found: " + id));
+    }
+
+    @Transactional
+    public void updateFlow(Long id, String title, int durationMinutes, LocalDateTime startFrom) {
+        validateReservableDateTime(startFrom, "調整開始日時");
+        Flow flow = getFlow(id);
+        flow.updateBasics(title, durationMinutes, startFrom);
+        flowRepo.save(flow);
+    }
+
+    @Transactional
+    public void deleteFlow(Long id) {
+        Flow flow = getFlow(id);
+        flowRepo.delete(flow);
     }
 
     public List<FlowStep> getSteps(Long flowId) {
