@@ -275,7 +275,7 @@ public class FlowService {
                         .collect(Collectors.toList());
 
                 days.add(new MonthlyCalendarDay(
-                        day.toString(),
+                        formatMonthDayLabel(day, monthStart),
                         day.getMonth().equals(monthStart.getMonth()),
                         day.equals(today),
                         dayEvents));
@@ -362,6 +362,13 @@ public class FlowService {
         return date.getMonthValue() + "/" + date.getDayOfMonth() + "(" + WEEKDAY_HEADERS.get(date.getDayOfWeek().getValue() % 7) + ")";
     }
 
+    private String formatMonthDayLabel(LocalDate day, LocalDate monthStart) {
+        if (day.getMonth().equals(monthStart.getMonth())) {
+            return Integer.toString(day.getDayOfMonth());
+        }
+        return day.getMonthValue() + "/" + day.getDayOfMonth();
+    }
+
     private List<CalendarSourceEvent> collectCalendarSourceEvents(List<Flow> flows) {
         if (flows == null || flows.isEmpty()) {
             return List.of();
@@ -385,7 +392,8 @@ public class FlowService {
                             step.getConfirmedEndAt(),
                             "CONFIRMED",
                             buildEventTitle(flow, participantName),
-                            buildTooltip(flow, participantName, "CONFIRMED", step.getConfirmedStartAt(), step.getConfirmedEndAt())));
+                            buildTooltip(flow, participantName, "CONFIRMED", step.getConfirmedStartAt(), step.getConfirmedEndAt()),
+                            "/flows/" + flow.getId()));
                 }
 
                 if (!"ACTIVE".equals(step.getStatus()) || step.getId() == null) {
@@ -406,7 +414,8 @@ public class FlowService {
                             candidate.getEndAt(),
                             candidate.getStatus(),
                             buildEventTitle(flow, participantName),
-                            buildTooltip(flow, participantName, candidate.getStatus(), candidate.getStartAt(), candidate.getEndAt())));
+                            buildTooltip(flow, participantName, candidate.getStatus(), candidate.getStartAt(), candidate.getEndAt()),
+                            "/flows/" + flow.getId()));
                 }
             }
         }
@@ -489,7 +498,8 @@ public class FlowService {
                 event.tooltip,
                 event.status,
                 toTypeClass(event.status),
-                style);
+                style,
+                event.detailUrl);
     }
 
     private MonthlyCalendarEvent toMonthlyCalendarEvent(CalendarSourceEvent event) {
@@ -498,7 +508,8 @@ public class FlowService {
                 formatTimeRange(event.startAt, event.endAt),
                 event.tooltip,
                 event.status,
-                toTypeClass(event.status));
+                toTypeClass(event.status),
+                event.detailUrl);
     }
 
     private String formatTimeRange(LocalDateTime startAt, LocalDateTime endAt) {
@@ -542,18 +553,21 @@ public class FlowService {
         private final String status;
         private final String title;
         private final String tooltip;
+        private final String detailUrl;
 
         private CalendarSourceEvent(
                 LocalDateTime startAt,
                 LocalDateTime endAt,
                 String status,
                 String title,
-                String tooltip) {
+                String tooltip,
+                String detailUrl) {
             this.startAt = startAt;
             this.endAt = endAt;
             this.status = status;
             this.title = title;
             this.tooltip = tooltip;
+            this.detailUrl = detailUrl;
         }
     }
 
@@ -636,6 +650,7 @@ public class FlowService {
         private final String status;
         private final String typeClass;
         private final String style;
+        private final String detailUrl;
 
         public CalendarEvent(
                 String title,
@@ -643,13 +658,15 @@ public class FlowService {
                 String tooltip,
                 String status,
                 String typeClass,
-                String style) {
+                String style,
+                String detailUrl) {
             this.title = title;
             this.timeLabel = timeLabel;
             this.tooltip = tooltip;
             this.status = status;
             this.typeClass = typeClass;
             this.style = style;
+            this.detailUrl = detailUrl;
         }
 
         public String getTitle() {
@@ -674,6 +691,10 @@ public class FlowService {
 
         public String getStyle() {
             return style;
+        }
+
+        public String getDetailUrl() {
+            return detailUrl;
         }
     }
 
@@ -777,18 +798,21 @@ public class FlowService {
         private final String tooltip;
         private final String status;
         private final String typeClass;
+        private final String detailUrl;
 
         public MonthlyCalendarEvent(
                 String title,
                 String timeLabel,
                 String tooltip,
                 String status,
-                String typeClass) {
+                String typeClass,
+                String detailUrl) {
             this.title = title;
             this.timeLabel = timeLabel;
             this.tooltip = tooltip;
             this.status = status;
             this.typeClass = typeClass;
+            this.detailUrl = detailUrl;
         }
 
         public String getTitle() {
@@ -809,6 +833,10 @@ public class FlowService {
 
         public String getTypeClass() {
             return typeClass;
+        }
+
+        public String getDetailUrl() {
+            return detailUrl;
         }
     }
 }

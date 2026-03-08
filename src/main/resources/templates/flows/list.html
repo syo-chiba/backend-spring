@@ -15,6 +15,10 @@
         <div style="display:flex; gap:8px;">
             <a class="btn btn-secondary" href="/users/me">マイページ</a>
             <a class="btn btn-secondary" href="/admin/users">管理者</a>
+            <form method="post" action="/logout" style="margin:0;">
+                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+                <button class="btn btn-secondary" type="submit">ログアウト</button>
+            </form>
             <a class="btn btn-primary" href="/flows/new">+ 新規作成</a>
         </div>
     </div>
@@ -125,14 +129,15 @@
             </div>
 
             <div class="calendar-day-col" th:each="day : ${weekCalendar.days}">
-                <div class="calendar-event"
-                     th:each="event : ${day.events}"
-                     th:classappend="' ' + ${event.typeClass}"
-                     th:style="${event.style}"
-                     th:title="${event.tooltip}">
+                <a class="calendar-event"
+                   th:each="event : ${day.events}"
+                   th:classappend="' ' + ${event.typeClass}"
+                   th:style="${event.style}"
+                   th:title="${event.tooltip}"
+                   th:href="${event.detailUrl}">
                     <div class="calendar-event-title" th:text="${event.title}">#1 面談 / Aさん</div>
                     <div class="calendar-event-time" th:text="${event.timeLabel}">3/2 10:00 - 3/2 11:00</div>
-                </div>
+                </a>
             </div>
         </div>
 
@@ -149,13 +154,14 @@
                         3/1
                     </div>
 
-                    <div class="month-event"
-                         th:each="event : ${day.events}"
-                         th:classappend="' ' + ${event.typeClass}"
-                         th:title="${event.tooltip}">
+                    <a class="month-event"
+                       th:each="event : ${day.events}"
+                       th:classappend="' ' + ${event.typeClass}"
+                       th:title="${event.tooltip}"
+                       th:href="${event.detailUrl}">
                         <div class="month-event-title" th:text="${event.title}">#1 面談 / Aさん</div>
                         <div class="month-event-time" th:text="${event.timeLabel}">10:00 - 11:00</div>
-                    </div>
+                    </a>
                 </div>
             </th:block>
         </div>

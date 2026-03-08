@@ -2,51 +2,56 @@
 <html lang="ja" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <title>繝輔Ο繝ｼ菴懈・</title>
+    <title>フロー作成</title>
     <link rel="stylesheet" href="/app.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 </head>
 <body>
 <main class="page" style="max-width: 760px;">
     <div class="top-bar">
         <div>
-            <h1>繝輔Ο繝ｼ菴懈・</h1>
-            <p class="muted">邂｡逅・・∪縺溘・繝ｦ繝ｼ繧ｶ繝ｼ縺ｨ縺励※譁ｰ縺励＞繝輔Ο繝ｼ繧剃ｽ懈・縺励∪縺吶・/p>
+            <h1>フロー作成</h1>
+            <p class="muted">候補日時・参加ユーザーを指定して新しいフローを作成します。</p>
         </div>
-        <a class="btn btn-secondary" href="/flows">荳隕ｧ縺ｸ謌ｻ繧・/a>
+        <div style="display:flex; gap:8px;">
+            <form method="post" action="/logout" style="margin:0;">
+                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+                <button class="btn btn-secondary" type="submit">ログアウト</button>
+            </form>
+            <a class="btn btn-secondary" href="/flows">一覧へ戻る</a>
+        </div>
     </div>
 
     <section class="card">
         <div th:if="${error}" class="alert alert-error" th:text="${error}"></div>
 
         <p>
-            莠育ｴ・庄閭ｽ譛滄俣: <b th:text="${minDate}">2026-03-09</b> 縲・<b th:text="${maxDate}">2026-06-09</b>
+            設定可能日時: <b th:text="${minDate}">2026-03-09</b> 〜 <b th:text="${maxDate}">2026-06-09</b>
         </p>
 
         <form id="createFlowForm" method="post" action="/flows">
             <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
 
             <div class="row">
-                <label>繧ｿ繧､繝医Ν</label>
+                <label>タイトル</label>
                 <input type="text" name="title" required>
             </div>
 
-            <div class="grid-2">
-                <div class="row">
-                    <label>謇隕∵凾髢難ｼ亥・・・/label>
-                    <input type="number" name="durationMinutes" value="60" min="1" required>
-                </div>
-
-                <div class="row">
-                    <label>隱ｿ謨ｴ髢句ｧ区律譎・/label>
-                    <input id="startFromPicker" type="text" name="startFrom" required placeholder="YYYY-MM-DDTHH:mm">
-                </div>
+            <div class="row">
+                <label>所要時間（分）</label>
+                <input type="number" name="durationMinutes" value="60" min="1" required>
             </div>
 
             <div class="row">
-                <label>諡・ｽ薙Θ繝ｼ繧ｶ繝ｼ・亥ｿ・茨ｼ・/label>
+                <label>調整開始日時</label>
+                <input type="text" th:value="${minDate} + 'T00:00'" readonly disabled>
+                <small class="muted">調整開始日時はシステムで固定されます。</small>
+            </div>
+
+            <div class="row">
+                <label>参加ユーザー（複数選択）</label>
                 <div th:if="${#lists.isEmpty(userParticipants)}" class="muted">
-                    諡・ｽ薙Θ繝ｼ繧ｶ繝ｼ縺後＞縺ｾ縺帙ｓ縲ょ・縺ｫ邂｡逅・・判髱｢縺ｧ諡・ｽ薙Θ繝ｼ繧ｶ繝ｼ繧剃ｽ懈・縺励※縺上□縺輔＞縲・                </div>
+                    参加ユーザーがいません。先に参加者画面で参加ユーザーを作成してください。
+                </div>
                 <div th:unless="${#lists.isEmpty(userParticipants)}" class="participant-list">
                     <label th:each="p : ${userParticipants}" class="participant-option">
                         <input type="checkbox" name="participantUserIds" th:value="${p.id}" />
@@ -56,35 +61,23 @@
             </div>
 
             <div class="row">
-                <label>螟夜Κ蜿ょ刈閠・ｼ井ｻｻ諢上・1陦・蜷搾ｼ・/label>
-                <textarea name="externalParticipants" rows="4" placeholder="A縺輔ｓ&#10;B縺輔ｓ"></textarea>
+                <label>外部参加者（任意、1行1名）</label>
+                <textarea name="externalParticipants" rows="4" placeholder="Aさん&#10;Bさん"></textarea>
             </div>
 
-            <button class="btn btn-primary" type="submit">菴懈・縺吶ｋ</button>
+            <button class="btn btn-primary" type="submit">作成する</button>
         </form>
     </section>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script th:inline="javascript">
-    const minDate = /*[[${minDate}]]*/ '2026-03-09';
-    const maxDate = /*[[${maxDate}]]*/ '2026-06-09';
-
-    flatpickr('#startFromPicker', {
-        enableTime: true,
-        dateFormat: "Y-m-d\\TH:i",
-        minDate: minDate,
-        maxDate: maxDate,
-        defaultDate: minDate
-    });
-
     const createFlowForm = document.getElementById('createFlowForm');
     if (createFlowForm) {
         createFlowForm.addEventListener('submit', function (event) {
             const checked = createFlowForm.querySelectorAll('input[name="participantUserIds"]:checked').length;
             if (checked === 0) {
                 event.preventDefault();
-                alert('諡・ｽ薙Θ繝ｼ繧ｶ繝ｼ繧・蜷堺ｻ･荳企∈謚槭＠縺ｦ縺上□縺輔＞縲・);
+                alert('参加ユーザーを1人以上選択してください。');
             }
         });
     }

@@ -102,7 +102,6 @@ public class FlowController {
     public String create(
             @RequestParam String title,
             @RequestParam int durationMinutes,
-            @RequestParam String startFrom,
             @RequestParam(required = false) String participants,
             @RequestParam(required = false) String externalParticipants,
             @RequestParam(required = false) List<Long> participantUserIds,
@@ -110,7 +109,7 @@ public class FlowController {
             RedirectAttributes redirectAttributes) {
 
         try {
-            LocalDateTime start = LocalDateTime.parse(startFrom, DT_LOCAL);
+            LocalDateTime start = flowService.getReservableMinDate().atStartOfDay();
 
             String rawExternalParticipants = externalParticipants;
             if ((rawExternalParticipants == null || rawExternalParticipants.isBlank())
@@ -185,10 +184,10 @@ public class FlowController {
             @PathVariable Long id,
             @RequestParam String title,
             @RequestParam int durationMinutes,
-            @RequestParam String startFrom,
             RedirectAttributes redirectAttributes) {
         try {
-            flowService.updateFlow(id, title, durationMinutes, LocalDateTime.parse(startFrom, DT_LOCAL));
+            var flow = flowService.getFlow(id);
+            flowService.updateFlow(id, title, durationMinutes, flow.getStartFrom());
             redirectAttributes.addFlashAttribute("message", "更新しました。");
         } catch (IllegalArgumentException ex) {
             redirectAttributes.addFlashAttribute("error", ex.getMessage());
