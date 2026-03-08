@@ -109,7 +109,7 @@
               <option th:each="i : ${#numbers.sequence(0,47)}"
                       th:value="${T(java.lang.String).format('%02d:%02d', i / 2, (i % 2) * 30)}"
                       th:selected="${i == 18}"
-                      th:text="${(i / 2)} + '時' + ((i % 2) == 0 ? '00分' : '30分')">
+                      th:text="|${i / 2}時${(i % 2) == 0 ? '00' : '30'}分|">
                 9時00分
               </option>
             </select>
