@@ -31,4 +31,7 @@ public class UserAccount {
     public String getUsername() { return username; }
     public String getPassword() { return password; }
     public boolean isEnabled() { return enabled; }
+
+    public void changePassword(String password) { this.password = password; }
+    public void setEnabled(boolean enabled) { this.enabled = enabled; }
 }

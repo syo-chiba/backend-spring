@@ -2,6 +2,8 @@ package com.example.backend_spring.config;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.util.List;
+import java.util.Map;
 
 import javax.sql.DataSource;
 
@@ -58,6 +60,22 @@ public class DbMaintenanceRunner {
                     "step_candidates",
                     "fk_step_candidates_flow_step",
                     "ALTER TABLE step_candidates ADD CONSTRAINT fk_step_candidates_flow_step FOREIGN KEY (flow_step_id) REFERENCES flow_steps(id) ON DELETE CASCADE");
+
+            // Remove legacy/incorrect constraints (e.g. fk_candidates_step) and keep only CASCADE FK.
+            reconcileCascadeForeignKey(
+                    jdbcTemplate,
+                    "flow_steps",
+                    "flow_id",
+                    "flows",
+                    "id",
+                    "fk_flow_steps_flow");
+            reconcileCascadeForeignKey(
+                    jdbcTemplate,
+                    "step_candidates",
+                    "flow_step_id",
+                    "flow_steps",
+                    "id",
+                    "fk_step_candidates_flow_step");
         };
     }
 
@@ -82,6 +100,60 @@ public class DbMaintenanceRunner {
         if (count != null && count == 0) {
             jdbcTemplate.execute(ddl);
             log.info("Created foreign key [{}] on table [{}]", fkName, table);
+        }
+    }
+
+    private void reconcileCascadeForeignKey(
+            JdbcTemplate jdbcTemplate,
+            String table,
+            String column,
+            String referencedTable,
+            String referencedColumn,
+            String desiredFkName) {
+        List<Map<String, Object>> fks = jdbcTemplate.queryForList("""
+                SELECT
+                    kcu.CONSTRAINT_NAME AS constraint_name,
+                    kcu.REFERENCED_TABLE_NAME AS referenced_table_name,
+                    kcu.REFERENCED_COLUMN_NAME AS referenced_column_name,
+                    rc.DELETE_RULE AS delete_rule
+                FROM information_schema.KEY_COLUMN_USAGE kcu
+                JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
+                  ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA
+                 AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+                WHERE kcu.TABLE_SCHEMA = DATABASE()
+                  AND kcu.TABLE_NAME = ?
+                  AND kcu.COLUMN_NAME = ?
+                  AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
+                """, table, column);
+
+        boolean desiredCascadeExists = false;
+        for (Map<String, Object> row : fks) {
+            String fkName = String.valueOf(row.get("constraint_name"));
+            String refTable = String.valueOf(row.get("referenced_table_name"));
+            String refColumn = String.valueOf(row.get("referenced_column_name"));
+            String deleteRule = String.valueOf(row.get("delete_rule"));
+
+            boolean sameReference = referencedTable.equalsIgnoreCase(refTable)
+                    && referencedColumn.equalsIgnoreCase(refColumn);
+            boolean cascade = "CASCADE".equalsIgnoreCase(deleteRule);
+            boolean desired = desiredFkName.equalsIgnoreCase(fkName);
+
+            if (sameReference && cascade && desired) {
+                desiredCascadeExists = true;
+                continue;
+            }
+
+            jdbcTemplate.execute("ALTER TABLE " + table + " DROP FOREIGN KEY " + fkName);
+            log.info("Dropped foreign key [{}] on table [{}] (deleteRule={}, ref={}.{})",
+                    fkName, table, deleteRule, refTable, refColumn);
+        }
+
+        if (!desiredCascadeExists) {
+            jdbcTemplate.execute(
+                    "ALTER TABLE " + table
+                            + " ADD CONSTRAINT " + desiredFkName
+                            + " FOREIGN KEY (" + column + ") REFERENCES " + referencedTable + "(" + referencedColumn + ") ON DELETE CASCADE");
+            log.info("Recreated foreign key [{}] on table [{}] with ON DELETE CASCADE", desiredFkName, table);
         }
     }
 }

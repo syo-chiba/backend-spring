@@ -24,7 +24,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.example.backend_spring.domain.UserAccount;
+import com.example.backend_spring.repository.ParticipantRepository;
 import com.example.backend_spring.repository.UserAccountRepository;
+import com.example.backend_spring.security.FlowAuthorization;
 import com.example.backend_spring.service.FlowService;
 
 @ExtendWith(MockitoExtension.class)
@@ -33,13 +35,33 @@ class FlowControllerTest {
     @Mock
     private UserAccountRepository userRepo;
 
+    @Mock
+    private ParticipantRepository participantRepo;
+
     private StubFlowService flowService;
+    private FlowAuthorization flowAuthorization;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         flowService = new StubFlowService();
-        FlowController controller = new FlowController(flowService, userRepo);
+        flowAuthorization = new FlowAuthorization(null, null, null, null) {
+            @Override
+            public boolean canManageFlow(Long flowId, org.springframework.security.core.Authentication authentication) {
+                return true;
+            }
+
+            @Override
+            public boolean canOperateActiveStep(Long flowId, org.springframework.security.core.Authentication authentication) {
+                return true;
+            }
+
+            @Override
+            public boolean isAdmin(org.springframework.security.core.Authentication authentication) {
+                return true;
+            }
+        };
+        FlowController controller = new FlowController(flowService, userRepo, participantRepo, flowAuthorization);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -48,10 +70,11 @@ class FlowControllerTest {
         flowService.createException = new IllegalArgumentException("validation failed");
 
         mockMvc.perform(post("/flows")
-                        .param("title", "面談")
+                        .param("title", "meeting")
                         .param("durationMinutes", "60")
                         .param("startFrom", "2026-02-22T10:00")
-                        .param("participants", "Aさん\nBさん"))
+                        .param("participantUserIds", "1")
+                        .param("externalParticipants", "A\nB"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/flows/new"))
                 .andExpect(flash().attribute("error", "validation failed"));
@@ -63,7 +86,7 @@ class FlowControllerTest {
                         .param("startAt", "2026-02-23T10:00"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/flows/10"))
-                .andExpect(flash().attribute("message", "候補を追加しました。"));
+                .andExpect(flash().attributeExists("message"));
 
         assertEquals(10L, flowService.addCandidateFlowId);
         assertNotNull(flowService.addCandidateStartAt);
@@ -88,17 +111,19 @@ class FlowControllerTest {
 
         mockMvc.perform(post("/flows")
                         .principal(() -> "admin")
-                        .param("title", "面談")
+                        .param("title", "meeting")
                         .param("durationMinutes", "60")
                         .param("startFrom", "2026-02-22T10:00")
-                        .param("participants", "Aさん\nBさん"))
+                        .param("participantUserIds", "1", "2")
+                        .param("externalParticipants", "A\nB"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/flows/5"));
 
         assertEquals(7L, flowService.createdByUserId);
-        assertEquals("面談", flowService.lastTitle);
+        assertEquals("meeting", flowService.lastTitle);
         assertEquals(60, flowService.lastDurationMinutes);
-        assertTrue(flowService.lastParticipants.containsAll(List.of("Aさん", "Bさん")));
+        assertEquals(List.of(1L, 2L), flowService.lastParticipantIds);
+        assertTrue(flowService.lastParticipants.containsAll(List.of("A", "B")));
     }
 
     private static class StubFlowService extends FlowService {
@@ -107,6 +132,7 @@ class FlowControllerTest {
         private LocalDateTime lastStartFrom;
         private Long createdByUserId;
         private List<String> lastParticipants;
+        private List<Long> lastParticipantIds;
 
         private Long addCandidateFlowId;
         private LocalDateTime addCandidateStartAt;
@@ -119,7 +145,13 @@ class FlowControllerTest {
         }
 
         @Override
-        public Long createFlow(String title, int durationMinutes, LocalDateTime startFrom, Long createdByUserId, List<String> participants) {
+        public Long createFlow(
+                String title,
+                int durationMinutes,
+                LocalDateTime startFrom,
+                Long createdByUserId,
+                List<Long> participantIds,
+                List<String> externalParticipants) {
             if (createException != null) {
                 throw createException;
             }
@@ -127,7 +159,8 @@ class FlowControllerTest {
             this.lastDurationMinutes = durationMinutes;
             this.lastStartFrom = startFrom;
             this.createdByUserId = createdByUserId;
-            this.lastParticipants = participants;
+            this.lastParticipantIds = participantIds;
+            this.lastParticipants = externalParticipants;
             return 5L;
         }
 

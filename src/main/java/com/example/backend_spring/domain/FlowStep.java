@@ -63,4 +63,9 @@ public class FlowStep {
     public void skip() {
         this.status = "SKIPPED";
     }
+
+    public void reassignParticipant(Long participantId, String participantName) {
+        this.participantId = participantId;
+        this.participantName = participantName;
+    }
 }

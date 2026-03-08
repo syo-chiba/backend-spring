@@ -52,6 +52,12 @@ public class Flow {
     public Long getCreatedByUserId() { return createdByUserId; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 
+    public void updateBasics(String title, int durationMinutes, LocalDateTime startFrom) {
+        this.title = title;
+        this.durationMinutes = durationMinutes;
+        this.startFrom = startFrom;
+    }
+
     public void moveToNextStep() {
         this.currentStepOrder++;
     }
