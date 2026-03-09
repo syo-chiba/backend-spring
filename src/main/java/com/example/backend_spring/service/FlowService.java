@@ -22,10 +22,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.backend_spring.domain.Flow;
 import com.example.backend_spring.domain.FlowStep;
+import com.example.backend_spring.domain.FlowTemplate;
+import com.example.backend_spring.domain.FlowTemplateStep;
 import com.example.backend_spring.domain.Participant;
 import com.example.backend_spring.domain.StepCandidate;
 import com.example.backend_spring.repository.FlowRepository;
 import com.example.backend_spring.repository.FlowStepRepository;
+import com.example.backend_spring.repository.FlowTemplateRepository;
+import com.example.backend_spring.repository.FlowTemplateStepRepository;
 import com.example.backend_spring.repository.ParticipantRepository;
 import com.example.backend_spring.repository.StepCandidateRepository;
 
@@ -41,6 +45,8 @@ public class FlowService {
 
     private final FlowRepository flowRepo;
     private final FlowStepRepository stepRepo;
+    private final FlowTemplateRepository templateRepo;
+    private final FlowTemplateStepRepository templateStepRepo;
     private final StepCandidateRepository candidateRepo;
     private final ParticipantRepository participantRepo;
     private final Clock clock;
@@ -48,14 +54,28 @@ public class FlowService {
     public FlowService(
             FlowRepository flowRepo,
             FlowStepRepository stepRepo,
+            FlowTemplateRepository templateRepo,
+            FlowTemplateStepRepository templateStepRepo,
             StepCandidateRepository candidateRepo,
             ParticipantRepository participantRepo,
             Clock clock) {
         this.flowRepo = flowRepo;
         this.stepRepo = stepRepo;
+        this.templateRepo = templateRepo;
+        this.templateStepRepo = templateStepRepo;
         this.candidateRepo = candidateRepo;
         this.participantRepo = participantRepo;
         this.clock = clock;
+    }
+
+    // Backward-compatible constructor for existing tests that directly instantiate FlowService.
+    public FlowService(
+            FlowRepository flowRepo,
+            FlowStepRepository stepRepo,
+            StepCandidateRepository candidateRepo,
+            ParticipantRepository participantRepo,
+            Clock clock) {
+        this(flowRepo, stepRepo, null, null, candidateRepo, participantRepo, clock);
     }
 
     @Transactional
@@ -168,6 +188,117 @@ public class FlowService {
 
     public List<Flow> listFlows() {
         return listFlows(null, null, "created_asc");
+    }
+
+    public List<FlowTemplate> listAvailableTemplates(Long userId) {
+        if (templateRepo == null) {
+            return List.of();
+        }
+        if (userId == null) {
+            return List.of();
+        }
+        return templateRepo.findAvailableForUser(userId);
+    }
+
+    @Transactional
+    public Long createTemplateFromFlow(
+            Long flowId,
+            String templateName,
+            String description,
+            String visibility,
+            Long createdByUserId) {
+        if (createdByUserId == null) {
+            throw new IllegalArgumentException("テンプレート作成ユーザーが不正です。");
+        }
+        requireTemplateFeatureAvailable();
+
+        Flow flow = getFlow(flowId);
+        List<FlowStep> steps = getSteps(flowId);
+        if (steps.isEmpty()) {
+            throw new IllegalArgumentException("ステップが存在しないためテンプレート化できません。");
+        }
+
+        String normalizedName = templateName == null ? "" : templateName.trim();
+        if (normalizedName.isEmpty()) {
+            throw new IllegalArgumentException("テンプレート名を入力してください。");
+        }
+
+        String normalizedVisibility = "SHARED".equals(visibility) ? "SHARED" : "PRIVATE";
+        String normalizedDescription = description == null ? null : description.trim();
+
+        FlowTemplate template = templateRepo.save(new FlowTemplate(
+                normalizedName,
+                normalizedDescription,
+                flow.getDurationMinutes(),
+                createdByUserId,
+                normalizedVisibility));
+
+        List<FlowTemplateStep> templateSteps = new ArrayList<>();
+        for (FlowStep step : steps) {
+            Participant participant = resolveParticipantForTemplateSnapshot(step.getParticipantId(), step.getParticipantName());
+            templateSteps.add(new FlowTemplateStep(
+                    template.getId(),
+                    step.getStepOrder(),
+                    participant.getId(),
+                    participant.getParticipantType(),
+                    participant.getDisplayName()));
+        }
+        templateStepRepo.saveAll(templateSteps);
+        return template.getId();
+    }
+
+    @Transactional
+    public Long createFlowFromTemplate(Long templateId, String title, Long createdByUserId) {
+        if (createdByUserId == null) {
+            throw new IllegalArgumentException("ログインユーザーが見つかりません。");
+        }
+        requireTemplateFeatureAvailable();
+
+        FlowTemplate template = templateRepo.findById(templateId)
+                .orElseThrow(() -> new IllegalArgumentException("テンプレートが見つかりません。templateId=" + templateId));
+        if (!template.isActive()) {
+            throw new IllegalArgumentException("無効なテンプレートです。");
+        }
+        if (!createdByUserId.equals(template.getCreatedByUserId()) && !"SHARED".equals(template.getVisibility())) {
+            throw new IllegalArgumentException("このテンプレートを利用する権限がありません。");
+        }
+
+        List<FlowTemplateStep> templateSteps = templateStepRepo.findByTemplateIdOrderByStepOrderAsc(templateId);
+        if (templateSteps.isEmpty()) {
+            throw new IllegalArgumentException("テンプレートにステップがありません。");
+        }
+
+        String flowTitle = title == null || title.isBlank() ? template.getName() : title.trim();
+        LocalDateTime startFrom = getReservableMinDate().atStartOfDay();
+
+        Flow flow = flowRepo.save(new Flow(
+                flowTitle,
+                template.getDurationMinutes(),
+                startFrom,
+                createdByUserId,
+                template.getId(),
+                template.getName()));
+
+        List<FlowStep> steps = new ArrayList<>();
+        int order = 1;
+        for (FlowTemplateStep templateStep : templateSteps) {
+            Participant participant = resolveParticipantForTemplateStep(templateStep);
+            FlowStep step = new FlowStep(
+                    flow.getId(),
+                    order,
+                    participant.getId(),
+                    participant.getDisplayName());
+            if (order == 1) {
+                step.activate();
+            }
+            steps.add(step);
+            order++;
+        }
+        stepRepo.saveAll(steps);
+
+        template.markUsedNow();
+        templateRepo.save(template);
+        return flow.getId();
     }
 
     public Map<Long, String> buildFlowScheduleLabels(List<Flow> flows) {
@@ -531,6 +662,31 @@ public class FlowService {
                 .orElseGet(() -> participantRepo.save(new Participant("EXTERNAL", null, displayName)));
     }
 
+    private Participant resolveParticipantForTemplateSnapshot(Long participantId, String participantName) {
+        if (participantId != null) {
+            return participantRepo.findById(participantId)
+                    .orElseGet(() -> resolveOrCreateParticipant(participantName == null ? "Unknown" : participantName));
+        }
+        return resolveOrCreateParticipant(participantName == null ? "Unknown" : participantName);
+    }
+
+    private Participant resolveParticipantForTemplateStep(FlowTemplateStep templateStep) {
+        if (templateStep.getParticipantId() != null) {
+            Optional<Participant> existing = participantRepo.findById(templateStep.getParticipantId());
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+        }
+        String name = templateStep.getParticipantNameSnapshot();
+        if ("USER".equals(templateStep.getParticipantTypeSnapshot())) {
+            return participantRepo.findByParticipantTypeAndDisplayName("USER", name)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "テンプレートのユーザー参加者が見つかりません: " + name));
+        }
+        return participantRepo.findByParticipantTypeAndDisplayName("EXTERNAL", name)
+                .orElseGet(() -> participantRepo.save(new Participant("EXTERNAL", null, name)));
+    }
+
     private String resolveParticipantDisplayName(FlowStep step, Map<Long, String> cache) {
         if (step.getParticipantId() != null) {
             if (cache.containsKey(step.getParticipantId())) {
@@ -706,6 +862,12 @@ public class FlowService {
             this.title = title;
             this.tooltip = tooltip;
             this.detailUrl = detailUrl;
+        }
+    }
+
+    private void requireTemplateFeatureAvailable() {
+        if (templateRepo == null || templateStepRepo == null) {
+            throw new IllegalStateException("Template repositories are not configured.");
         }
     }
 

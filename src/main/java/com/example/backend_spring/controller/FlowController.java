@@ -91,10 +91,12 @@ public class FlowController {
     }
 
     @GetMapping("/new")
-    public String newForm(Model model) {
+    public String newForm(Model model, Principal principal) {
+        Long currentUserId = resolveCurrentUserId(principal);
         model.addAttribute("minDate", flowService.getReservableMinDate());
         model.addAttribute("maxDate", flowService.getReservableMaxDate());
         model.addAttribute("userParticipants", loadUserParticipants());
+        model.addAttribute("availableTemplates", flowService.listAvailableTemplates(currentUserId));
         return "flows/new";
     }
 
@@ -259,6 +261,29 @@ public class FlowController {
         return "redirect:/flows";
     }
 
+    @PostMapping("/{id}/templates")
+    @PreAuthorize("@flowAuthorization.canManageFlow(#id, authentication)")
+    public String saveTemplate(
+            @PathVariable Long id,
+            @RequestParam String templateName,
+            @RequestParam(required = false) String templateDescription,
+            @RequestParam(required = false, defaultValue = "PRIVATE") String visibility,
+            Principal principal,
+            RedirectAttributes redirectAttributes) {
+        try {
+            Long templateId = flowService.createTemplateFromFlow(
+                    id,
+                    templateName,
+                    templateDescription,
+                    visibility,
+                    resolveCurrentUserId(principal));
+            redirectAttributes.addFlashAttribute("message", "テンプレートを作成しました。templateId=" + templateId);
+        } catch (IllegalArgumentException ex) {
+            redirectAttributes.addFlashAttribute("error", ex.getMessage());
+        }
+        return "redirect:/flows/" + id;
+    }
+
     @PostMapping("/{id}/candidates")
     @PreAuthorize("@flowAuthorization.canOperateActiveStep(#id, authentication)")
     public String addCandidate(
@@ -301,6 +326,21 @@ public class FlowController {
         }
     }
 
+    @PostMapping("/from-template")
+    public String createFromTemplate(
+            @RequestParam Long templateId,
+            @RequestParam(required = false) String title,
+            Principal principal,
+            RedirectAttributes redirectAttributes) {
+        try {
+            Long flowId = flowService.createFlowFromTemplate(templateId, title, resolveCurrentUserId(principal));
+            return "redirect:/flows/" + flowId;
+        } catch (IllegalArgumentException ex) {
+            redirectAttributes.addFlashAttribute("error", ex.getMessage());
+            return "redirect:/flows/new";
+        }
+    }
+
     private LocalDateTime parseDateAndTime(String startDate, String startTime) {
         try {
             LocalDate date = LocalDate.parse(startDate);
@@ -319,5 +359,14 @@ public class FlowController {
                 .filter(p -> "USER".equals(p.getParticipantType()))
                 .sorted(Comparator.comparing(Participant::getDisplayName, String.CASE_INSENSITIVE_ORDER))
                 .collect(Collectors.toList());
+    }
+
+    private Long resolveCurrentUserId(Principal principal) {
+        if (principal == null) {
+            return null;
+        }
+        return userRepo.findByUsername(principal.getName())
+                .map(u -> u.getId())
+                .orElse(null);
     }
 }
