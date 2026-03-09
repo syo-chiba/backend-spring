@@ -29,8 +29,7 @@
 
   <section class="card" style="margin-bottom:16px;">
     <p>所要時間: <b><span th:text="${flow.durationMinutes}">60</span></b> 分</p>
-    <p>ステータス: <span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(flow.status)}" th:text="${flow.status}">IN_PROGRESS</span></p>
-    <p>現在ステップ: <b th:text="${flow.currentStepOrder}">1</b></p>
+    <p>ステータス: <span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(flow.status)}" th:text="${T(com.example.backend_spring.view.StatusLabelUtil).toJa(flow.status)}">進行中</span></p>
     <p>候補可能期間: <b th:text="${minDate}">2026-02-21</b> 〜 <b th:text="${maxDate}">2026-05-21</b></p>
     <div style="display:flex; gap:8px;" th:if="${canManageFlow}">
       <a class="btn btn-secondary" th:href="@{'/flows/' + ${flow.id} + '/edit'}">編集</a>
@@ -39,6 +38,23 @@
         <button class="btn btn-secondary" type="submit">削除</button>
       </form>
     </div>
+    <form method="post"
+          th:if="${canManageFlow}"
+          th:action="@{'/flows/' + ${flow.id} + '/templates'}"
+          style="margin-top:12px; display:grid; gap:8px;">
+      <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+      <h3 style="margin:0;">このフローをテンプレート化</h3>
+      <input type="text" name="templateName" placeholder="テンプレート名" required />
+      <input type="text" name="templateDescription" placeholder="説明（任意）" />
+      <div style="display:flex; gap:8px; align-items:center;">
+        <label for="visibility">公開範囲</label>
+        <select id="visibility" name="visibility">
+          <option value="PRIVATE" selected>PRIVATE</option>
+          <option value="SHARED">SHARED</option>
+        </select>
+        <button class="btn btn-secondary" type="submit">テンプレート保存</button>
+      </div>
+    </form>
   </section>
 
   <section class="card" style="margin-bottom:16px;">
@@ -54,7 +70,7 @@
       <tr th:each="step : ${steps}">
         <td th:text="${step.stepOrder}">1</td>
         <td th:text="${step.participantName}">Aさん</td>
-        <td><span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(step.status)}" th:text="${step.status}">ACTIVE</span></td>
+        <td><span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(step.status)}" th:text="${T(com.example.backend_spring.view.StatusLabelUtil).toJa(step.status)}">対応中</span></td>
         <td th:text="${step.confirmedStartAt != null ? #temporals.format(step.confirmedStartAt, 'M/d(E) HH:mm') : '-'}">2/23(月) 10:00</td>
         <td th:text="${step.confirmedEndAt != null ? #temporals.format(step.confirmedEndAt, 'M/d(E) HH:mm') : '-'}">2/23(月) 11:00</td>
       </tr>
@@ -62,16 +78,16 @@
   </section>
 
   <section class="card">
-    <h2>現在の調整対象（ACTIVE）</h2>
+    <h2>現在の調整対象（対応中）</h2>
     <div th:if="${activeStep != null}">
       <p>
         <b th:text="${activeStep.participantName}">Aさん</b>
-        （状態: <span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(activeStep.status)}" th:text="${activeStep.status}">ACTIVE</span>）
+        （状態: <span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(activeStep.status)}" th:text="${T(com.example.backend_spring.view.StatusLabelUtil).toJa(activeStep.status)}">対応中</span>）
       </p>
 
-      <h3>候補日時</h3>
+      <h3>設定済み日時</h3>
       <div th:if="${#lists.isEmpty(candidates)}">
-        <p>候補はまだありません。</p>
+        <p>設定済み日時はまだありません。</p>
       </div>
 
       <table th:if="${!#lists.isEmpty(candidates)}" style="margin-bottom:12px;">
@@ -84,7 +100,7 @@
         <tr th:each="c : ${candidates}">
           <td th:text="${#temporals.format(c.startAt, 'M/d(E) HH:mm')}">2/23(月) 10:00</td>
           <td th:text="${#temporals.format(c.endAt, 'M/d(E) HH:mm')}">2/23(月) 11:00</td>
-          <td><span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(c.status)}" th:text="${c.status}">PROPOSED</span></td>
+          <td><span class="badge" th:classappend="' badge-' + ${#strings.toLowerCase(c.status)}" th:text="${T(com.example.backend_spring.view.StatusLabelUtil).toJa(c.status)}">候補</span></td>
           <td>
             <form method="post" th:if="${c.status == 'PROPOSED' and canOperateActiveStep}" th:action="@{'/flows/' + ${flow.id} + '/candidates/' + ${c.id} + '/select'}">
               <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
@@ -96,16 +112,29 @@
         </tr>
       </table>
 
-      <h3 th:if="${canOperateActiveStep}">候補を追加</h3>
+      <h3 th:if="${canOperateActiveStep}">日時を設定</h3>
       <form method="post" th:if="${canOperateActiveStep}" th:action="@{'/flows/' + ${flow.id} + '/candidates'}">
         <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
-        <div class="row">
-          <label>開始日時</label>
-          <input id="startAtPicker" type="text" name="startAt" required placeholder="YYYY-MM-DDTHH:mm" />
+        <div class="grid-2">
+          <div class="row">
+            <label>設定日付</label>
+            <input type="date" name="startDate" required th:attr="min=${minDate},max=${maxDate}" />
+          </div>
+          <div class="row">
+            <label>設定時間</label>
+            <select name="startTime" required>
+              <option th:each="i : ${#numbers.sequence(0,47)}"
+                      th:value="${T(java.lang.String).format('%02d:%02d', i / 2, (i % 2) * 30)}"
+                      th:selected="${i == 18}"
+                      th:text="|${i / 2}時${(i % 2) == 0 ? '00' : '30'}分|">
+                9時00分
+              </option>
+            </select>
+          </div>
         </div>
-        <button class="btn btn-primary" type="submit">追加</button>
+        <button class="btn btn-primary" type="submit">設定</button>
       </form>
-      <p th:if="${!canOperateActiveStep}" class="muted">候補の追加・確定は現在の担当ユーザーのみ可能です（管理者の代理確定は不可）。</p>
+      <p th:if="${!canOperateActiveStep}" class="muted">日時の設定は現在の担当ユーザーのみ可能です（管理者の代理確定は不可）。</p>
     </div>
 
     <div th:if="${activeStep == null}">
@@ -114,21 +143,5 @@
   </section>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<script th:inline="javascript">
-  const minDate = /*[[${minDate}]]*/ '2026-02-21';
-  const maxDate = /*[[${maxDate}]]*/ '2026-05-21';
-  const picker = document.getElementById('startAtPicker');
-
-  if (picker) {
-    flatpickr(picker, {
-      enableTime: true,
-      dateFormat: "Y-m-d\\TH:i",
-      minDate: minDate,
-      maxDate: maxDate,
-      defaultDate: minDate
-    });
-  }
-</script>
 </body>
 </html>

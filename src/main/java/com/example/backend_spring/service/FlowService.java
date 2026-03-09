@@ -22,10 +22,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.backend_spring.domain.Flow;
 import com.example.backend_spring.domain.FlowStep;
+import com.example.backend_spring.domain.FlowTemplate;
+import com.example.backend_spring.domain.FlowTemplateStep;
 import com.example.backend_spring.domain.Participant;
 import com.example.backend_spring.domain.StepCandidate;
 import com.example.backend_spring.repository.FlowRepository;
 import com.example.backend_spring.repository.FlowStepRepository;
+import com.example.backend_spring.repository.FlowTemplateRepository;
+import com.example.backend_spring.repository.FlowTemplateStepRepository;
 import com.example.backend_spring.repository.ParticipantRepository;
 import com.example.backend_spring.repository.StepCandidateRepository;
 
@@ -36,10 +40,13 @@ public class FlowService {
     private static final List<String> WEEKDAY_HEADERS = List.of("\u65E5", "\u6708", "\u706B", "\u6C34", "\u6728", "\u91D1", "\u571F");
     private static final DateTimeFormatter TIME_LABEL_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_LABEL_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd");
+    private static final DateTimeFormatter SCHEDULE_LABEL_FORMAT = DateTimeFormatter.ofPattern("M月d日 HH:mm");
     private static final double HOUR_HEIGHT_PX = 44.0;
 
     private final FlowRepository flowRepo;
     private final FlowStepRepository stepRepo;
+    private final FlowTemplateRepository templateRepo;
+    private final FlowTemplateStepRepository templateStepRepo;
     private final StepCandidateRepository candidateRepo;
     private final ParticipantRepository participantRepo;
     private final Clock clock;
@@ -47,14 +54,28 @@ public class FlowService {
     public FlowService(
             FlowRepository flowRepo,
             FlowStepRepository stepRepo,
+            FlowTemplateRepository templateRepo,
+            FlowTemplateStepRepository templateStepRepo,
             StepCandidateRepository candidateRepo,
             ParticipantRepository participantRepo,
             Clock clock) {
         this.flowRepo = flowRepo;
         this.stepRepo = stepRepo;
+        this.templateRepo = templateRepo;
+        this.templateStepRepo = templateStepRepo;
         this.candidateRepo = candidateRepo;
         this.participantRepo = participantRepo;
         this.clock = clock;
+    }
+
+    // Backward-compatible constructor for existing tests that directly instantiate FlowService.
+    public FlowService(
+            FlowRepository flowRepo,
+            FlowStepRepository stepRepo,
+            StepCandidateRepository candidateRepo,
+            ParticipantRepository participantRepo,
+            Clock clock) {
+        this(flowRepo, stepRepo, null, null, candidateRepo, participantRepo, clock);
     }
 
     @Transactional
@@ -169,6 +190,153 @@ public class FlowService {
         return listFlows(null, null, "created_asc");
     }
 
+    public List<FlowTemplate> listAvailableTemplates(Long userId) {
+        if (templateRepo == null) {
+            return List.of();
+        }
+        if (userId == null) {
+            return List.of();
+        }
+        return templateRepo.findAvailableForUser(userId);
+    }
+
+    @Transactional
+    public Long createTemplateFromFlow(
+            Long flowId,
+            String templateName,
+            String description,
+            String visibility,
+            Long createdByUserId) {
+        if (createdByUserId == null) {
+            throw new IllegalArgumentException("テンプレート作成ユーザーが不正です。");
+        }
+        requireTemplateFeatureAvailable();
+
+        Flow flow = getFlow(flowId);
+        List<FlowStep> steps = getSteps(flowId);
+        if (steps.isEmpty()) {
+            throw new IllegalArgumentException("ステップが存在しないためテンプレート化できません。");
+        }
+
+        String normalizedName = templateName == null ? "" : templateName.trim();
+        if (normalizedName.isEmpty()) {
+            throw new IllegalArgumentException("テンプレート名を入力してください。");
+        }
+
+        String normalizedVisibility = "SHARED".equals(visibility) ? "SHARED" : "PRIVATE";
+        String normalizedDescription = description == null ? null : description.trim();
+
+        FlowTemplate template = templateRepo.save(new FlowTemplate(
+                normalizedName,
+                normalizedDescription,
+                flow.getDurationMinutes(),
+                createdByUserId,
+                normalizedVisibility));
+
+        List<FlowTemplateStep> templateSteps = new ArrayList<>();
+        for (FlowStep step : steps) {
+            Participant participant = resolveParticipantForTemplateSnapshot(step.getParticipantId(), step.getParticipantName());
+            templateSteps.add(new FlowTemplateStep(
+                    template.getId(),
+                    step.getStepOrder(),
+                    participant.getId(),
+                    participant.getParticipantType(),
+                    participant.getDisplayName()));
+        }
+        templateStepRepo.saveAll(templateSteps);
+        return template.getId();
+    }
+
+    @Transactional
+    public Long createFlowFromTemplate(Long templateId, String title, Long createdByUserId) {
+        if (createdByUserId == null) {
+            throw new IllegalArgumentException("ログインユーザーが見つかりません。");
+        }
+        requireTemplateFeatureAvailable();
+
+        FlowTemplate template = templateRepo.findById(templateId)
+                .orElseThrow(() -> new IllegalArgumentException("テンプレートが見つかりません。templateId=" + templateId));
+        if (!template.isActive()) {
+            throw new IllegalArgumentException("無効なテンプレートです。");
+        }
+        if (!createdByUserId.equals(template.getCreatedByUserId()) && !"SHARED".equals(template.getVisibility())) {
+            throw new IllegalArgumentException("このテンプレートを利用する権限がありません。");
+        }
+
+        List<FlowTemplateStep> templateSteps = templateStepRepo.findByTemplateIdOrderByStepOrderAsc(templateId);
+        if (templateSteps.isEmpty()) {
+            throw new IllegalArgumentException("テンプレートにステップがありません。");
+        }
+
+        String flowTitle = title == null || title.isBlank() ? template.getName() : title.trim();
+        LocalDateTime startFrom = getReservableMinDate().atStartOfDay();
+
+        Flow flow = flowRepo.save(new Flow(
+                flowTitle,
+                template.getDurationMinutes(),
+                startFrom,
+                createdByUserId,
+                template.getId(),
+                template.getName()));
+
+        List<FlowStep> steps = new ArrayList<>();
+        int order = 1;
+        for (FlowTemplateStep templateStep : templateSteps) {
+            Participant participant = resolveParticipantForTemplateStep(templateStep);
+            FlowStep step = new FlowStep(
+                    flow.getId(),
+                    order,
+                    participant.getId(),
+                    participant.getDisplayName());
+            if (order == 1) {
+                step.activate();
+            }
+            steps.add(step);
+            order++;
+        }
+        stepRepo.saveAll(steps);
+
+        template.markUsedNow();
+        templateRepo.save(template);
+        return flow.getId();
+    }
+
+    public Map<Long, String> buildFlowScheduleLabels(List<Flow> flows) {
+        Map<Long, String> labels = new HashMap<>();
+        if (flows == null || flows.isEmpty()) {
+            return labels;
+        }
+
+        for (Flow flow : flows) {
+            if (flow == null || flow.getId() == null) {
+                continue;
+            }
+
+            List<FlowStep> steps = stepRepo.findByFlowIdOrderByStepOrder(flow.getId());
+            Optional<FlowStep> confirmed = steps.stream()
+                    .filter(s -> s.getConfirmedStartAt() != null && s.getConfirmedEndAt() != null)
+                    .min(Comparator.comparing(FlowStep::getStepOrder));
+
+            if (confirmed.isPresent()) {
+                FlowStep step = confirmed.get();
+                labels.put(flow.getId(), formatScheduleLabel(step.getConfirmedStartAt(), step.getConfirmedEndAt()));
+                continue;
+            }
+
+            FlowStep active = stepRepo.findByFlowIdAndStepOrder(flow.getId(), flow.getCurrentStepOrder());
+            if (active != null && active.getId() != null) {
+                Optional<StepCandidate> candidate = candidateRepo.findByFlowStepIdOrderByStartAtAsc(active.getId()).stream()
+                        .filter(c -> BLOCKING_CANDIDATE_STATUSES.contains(c.getStatus()))
+                        .findFirst();
+                if (candidate.isPresent()) {
+                    StepCandidate c = candidate.get();
+                    labels.put(flow.getId(), formatScheduleLabel(c.getStartAt(), c.getEndAt()));
+                }
+            }
+        }
+        return labels;
+    }
+
     public Flow getFlow(Long id) {
         return flowRepo.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Flow not found: " + id));
@@ -180,6 +348,55 @@ public class FlowService {
         Flow flow = getFlow(id);
         flow.updateBasics(title, durationMinutes, startFrom);
         flowRepo.save(flow);
+    }
+
+    @Transactional
+    public void updateConfirmedStepSchedule(Long flowId, Long stepId, LocalDateTime startAt) {
+        validateReservableDateTime(startAt, "面談設定日時");
+
+        Flow flow = getFlow(flowId);
+        FlowStep step = stepRepo.findById(stepId)
+                .orElseThrow(() -> new IllegalArgumentException("ステップが見つかりません。stepId=" + stepId));
+        if (!step.getFlowId().equals(flowId)) {
+            throw new IllegalArgumentException("指定されたフローのステップではありません。");
+        }
+        if (step.getConfirmedStartAt() == null || step.getConfirmedEndAt() == null) {
+            throw new IllegalArgumentException("未設定のステップはこの画面から変更できません。");
+        }
+
+        LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
+        assertNoOwnerTimeOverlap(flow, startAt, endAt, stepId);
+        step.confirm(startAt, endAt);
+        stepRepo.save(step);
+    }
+
+    @Transactional
+    public void finalizeStepAssignmentAndSchedule(
+            Long flowId,
+            Long stepId,
+            Long participantId,
+            LocalDateTime startAt) {
+        validateReservableDateTime(startAt, "面談設定日時");
+
+        Flow flow = getFlow(flowId);
+        FlowStep step = stepRepo.findById(stepId)
+                .orElseThrow(() -> new IllegalArgumentException("ステップが見つかりません。stepId=" + stepId));
+        if (!step.getFlowId().equals(flowId)) {
+            throw new IllegalArgumentException("指定されたフローのステップではありません。");
+        }
+
+        Participant participant = participantRepo.findById(participantId)
+                .orElseThrow(() -> new IllegalArgumentException("参加者が見つかりません。participantId=" + participantId));
+        if (!"USER".equals(participant.getParticipantType())) {
+            throw new IllegalArgumentException("担当ユーザーとして設定できない参加者です。");
+        }
+
+        LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
+        assertNoOwnerTimeOverlap(flow, startAt, endAt, stepId);
+
+        step.reassignParticipant(participant.getId(), participant.getDisplayName());
+        step.confirm(startAt, endAt);
+        stepRepo.save(step);
     }
 
     @Transactional
@@ -307,9 +524,11 @@ public class FlowService {
 
         LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
 
-        assertNoOwnerTimeOverlap(flow, startAt, endAt);
+        assertNoOwnerTimeOverlap(flow, startAt, endAt, null);
 
-        candidateRepo.save(new StepCandidate(active.getId(), startAt, endAt));
+        StepCandidate created = candidateRepo.save(new StepCandidate(active.getId(), startAt, endAt));
+        // New behavior: when a date/time is entered, it is fixed immediately.
+        selectCandidateForActiveStep(flowId, created.getId());
     }
 
     @Transactional
@@ -443,6 +662,31 @@ public class FlowService {
                 .orElseGet(() -> participantRepo.save(new Participant("EXTERNAL", null, displayName)));
     }
 
+    private Participant resolveParticipantForTemplateSnapshot(Long participantId, String participantName) {
+        if (participantId != null) {
+            return participantRepo.findById(participantId)
+                    .orElseGet(() -> resolveOrCreateParticipant(participantName == null ? "Unknown" : participantName));
+        }
+        return resolveOrCreateParticipant(participantName == null ? "Unknown" : participantName);
+    }
+
+    private Participant resolveParticipantForTemplateStep(FlowTemplateStep templateStep) {
+        if (templateStep.getParticipantId() != null) {
+            Optional<Participant> existing = participantRepo.findById(templateStep.getParticipantId());
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+        }
+        String name = templateStep.getParticipantNameSnapshot();
+        if ("USER".equals(templateStep.getParticipantTypeSnapshot())) {
+            return participantRepo.findByParticipantTypeAndDisplayName("USER", name)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "テンプレートのユーザー参加者が見つかりません: " + name));
+        }
+        return participantRepo.findByParticipantTypeAndDisplayName("EXTERNAL", name)
+                .orElseGet(() -> participantRepo.save(new Participant("EXTERNAL", null, name)));
+    }
+
     private String resolveParticipantDisplayName(FlowStep step, Map<Long, String> cache) {
         if (step.getParticipantId() != null) {
             if (cache.containsKey(step.getParticipantId())) {
@@ -478,10 +722,38 @@ public class FlowService {
 
     private String buildTooltip(Flow flow, String participantName, String status, LocalDateTime startAt, LocalDateTime endAt) {
         return buildEventTitle(flow, participantName)
-                + " [" + status + "] "
+                + " [" + toStatusLabelJa(status) + "] "
                 + startAt.toString()
                 + " - "
                 + endAt.toString();
+    }
+
+    private String toStatusLabelJa(String status) {
+        if (status == null || status.isBlank()) {
+            return "";
+        }
+        switch (status) {
+            case "IN_PROGRESS":
+                return "進行中";
+            case "DONE":
+                return "完了";
+            case "PENDING":
+                return "未着手";
+            case "ACTIVE":
+                return "対応中";
+            case "CONFIRMED":
+                return "確定";
+            case "SKIPPED":
+                return "スキップ";
+            case "PROPOSED":
+                return "候補";
+            case "SELECTED":
+                return "選択済み";
+            case "REJECTED":
+                return "却下";
+            default:
+                return status;
+        }
     }
 
     private CalendarEvent toWeeklyCalendarEvent(CalendarSourceEvent event) {
@@ -516,6 +788,13 @@ public class FlowService {
         return TIME_LABEL_FORMAT.format(startAt) + " - " + TIME_LABEL_FORMAT.format(endAt);
     }
 
+    private String formatScheduleLabel(LocalDateTime startAt, LocalDateTime endAt) {
+        if (startAt == null || endAt == null) {
+            return "-";
+        }
+        return SCHEDULE_LABEL_FORMAT.format(startAt) + " ~ " + TIME_LABEL_FORMAT.format(endAt);
+    }
+
     private String toTypeClass(String status) {
         if ("CONFIRMED".equals(status)) {
             return "calendar-event-confirmed";
@@ -526,12 +805,27 @@ public class FlowService {
         return "calendar-event-proposed";
     }
 
-    private void assertNoOwnerTimeOverlap(Flow flow, LocalDateTime newStartAt, LocalDateTime newEndAt) {
-        var conflict = candidateRepo.findFirstTimeConflictForOwner(flow.getCreatedByUserId(), newStartAt, newEndAt);
-        if (conflict.isPresent()) {
-            var c = conflict.get();
+    private void assertNoOwnerTimeOverlap(Flow flow, LocalDateTime newStartAt, LocalDateTime newEndAt, Long excludeStepId) {
+        Long excludeFlowStepId = excludeStepId;
+        var candidateConflict = candidateRepo.findFirstTimeConflictForOwner(
+                flow.getCreatedByUserId(),
+                excludeFlowStepId,
+                newStartAt,
+                newEndAt);
+        if (candidateConflict.isPresent()) {
+            var c = candidateConflict.get();
             throw new IllegalArgumentException(
                     "\u5019\u88dc\u6642\u9593\u304c\u91cd\u8907\u3057\u3066\u3044\u307e\u3059: \u30d5\u30ed\u30fc=" + c.getFlowTitle()
+                            + ", \u53c2\u52a0\u8005=" + c.getParticipantName()
+                            + ", \u65e2\u5b58=" + c.getStartAt() + " - " + c.getEndAt());
+        }
+
+        var confirmedConflict = stepRepo.findFirstConfirmedConflictForOwner(
+                flow.getCreatedByUserId(), excludeStepId, newStartAt, newEndAt);
+        if (confirmedConflict.isPresent()) {
+            var c = confirmedConflict.get();
+            throw new IllegalArgumentException(
+                    "\u78ba\u5b9a\u6e08\u307f\u6642\u9593\u304c\u91cd\u8907\u3057\u3066\u3044\u307e\u3059: \u30d5\u30ed\u30fc=" + c.getFlowTitle()
                             + ", \u53c2\u52a0\u8005=" + c.getParticipantName()
                             + ", \u65e2\u5b58=" + c.getStartAt() + " - " + c.getEndAt());
         }
@@ -568,6 +862,12 @@ public class FlowService {
             this.title = title;
             this.tooltip = tooltip;
             this.detailUrl = detailUrl;
+        }
+    }
+
+    private void requireTemplateFeatureAvailable() {
+        if (templateRepo == null || templateStepRepo == null) {
+            throw new IllegalStateException("Template repositories are not configured.");
         }
     }
 

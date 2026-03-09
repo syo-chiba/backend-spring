@@ -3,7 +3,7 @@ package com.example.backend_spring.controller;
 import java.security.Principal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -36,8 +36,6 @@ public class FlowController {
     private final ParticipantRepository participantRepo;
     private final FlowAuthorization flowAuthorization;
 
-    private static final DateTimeFormatter DT_LOCAL = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm");
-
     public FlowController(
             FlowService flowService,
             UserAccountRepository userRepo,
@@ -62,9 +60,11 @@ public class FlowController {
         String toggleSort = "created_asc".equals(normalizedSort) ? "created_desc" : "created_asc";
         String normalizedView = "month".equals(view) ? "month" : "week";
         var flows = flowService.listFlows(status, keyword, normalizedSort);
+        var flowScheduleLabels = flowService.buildFlowScheduleLabels(flows);
         LocalDate requestedCursor = parseDate(cursor != null ? cursor : weekStart);
 
         model.addAttribute("flows", flows);
+        model.addAttribute("flowScheduleLabels", flowScheduleLabels);
         model.addAttribute("viewMode", normalizedView);
         if ("month".equals(normalizedView)) {
             var monthCalendar = flowService.buildMonthlyCalendarView(flows, requestedCursor);
@@ -91,10 +91,12 @@ public class FlowController {
     }
 
     @GetMapping("/new")
-    public String newForm(Model model) {
+    public String newForm(Model model, Principal principal) {
+        Long currentUserId = resolveCurrentUserId(principal);
         model.addAttribute("minDate", flowService.getReservableMinDate());
         model.addAttribute("maxDate", flowService.getReservableMaxDate());
         model.addAttribute("userParticipants", loadUserParticipants());
+        model.addAttribute("availableTemplates", flowService.listAvailableTemplates(currentUserId));
         return "flows/new";
     }
 
@@ -196,6 +198,45 @@ public class FlowController {
         return "redirect:/flows/" + id;
     }
 
+    @PostMapping("/{id}/steps/{stepId}/schedule")
+    @PreAuthorize("@flowAuthorization.canManageFlow(#id, authentication)")
+    public String updateStepSchedule(
+            @PathVariable Long id,
+            @PathVariable Long stepId,
+            @RequestParam String startDate,
+            @RequestParam String startTime,
+            RedirectAttributes redirectAttributes) {
+        try {
+            flowService.updateConfirmedStepSchedule(id, stepId, parseDateAndTime(startDate, startTime));
+            redirectAttributes.addFlashAttribute("message", "面談設定日時を更新しました。");
+        } catch (IllegalArgumentException ex) {
+            redirectAttributes.addFlashAttribute("error", ex.getMessage());
+        }
+        return "redirect:/flows/" + id + "/edit";
+    }
+
+    @PostMapping("/{id}/steps/{stepId}/finalize")
+    @PreAuthorize("@flowAuthorization.canManageFlow(#id, authentication)")
+    public String finalizeStep(
+            @PathVariable Long id,
+            @PathVariable Long stepId,
+            @RequestParam Long participantId,
+            @RequestParam String startDate,
+            @RequestParam String startTime,
+            RedirectAttributes redirectAttributes) {
+        try {
+            flowService.finalizeStepAssignmentAndSchedule(
+                    id,
+                    stepId,
+                    participantId,
+                    parseDateAndTime(startDate, startTime));
+            redirectAttributes.addFlashAttribute("message", "担当ユーザーと面談設定日時を確定しました。");
+        } catch (IllegalArgumentException ex) {
+            redirectAttributes.addFlashAttribute("error", ex.getMessage());
+        }
+        return "redirect:/flows/" + id + "/edit";
+    }
+
     @PostMapping("/{id}/steps/{stepId}/assignee")
     @PreAuthorize("@flowAuthorization.canManageFlow(#id, authentication)")
     public String updateAssignee(
@@ -220,15 +261,39 @@ public class FlowController {
         return "redirect:/flows";
     }
 
+    @PostMapping("/{id}/templates")
+    @PreAuthorize("@flowAuthorization.canManageFlow(#id, authentication)")
+    public String saveTemplate(
+            @PathVariable Long id,
+            @RequestParam String templateName,
+            @RequestParam(required = false) String templateDescription,
+            @RequestParam(required = false, defaultValue = "PRIVATE") String visibility,
+            Principal principal,
+            RedirectAttributes redirectAttributes) {
+        try {
+            Long templateId = flowService.createTemplateFromFlow(
+                    id,
+                    templateName,
+                    templateDescription,
+                    visibility,
+                    resolveCurrentUserId(principal));
+            redirectAttributes.addFlashAttribute("message", "テンプレートを作成しました。templateId=" + templateId);
+        } catch (IllegalArgumentException ex) {
+            redirectAttributes.addFlashAttribute("error", ex.getMessage());
+        }
+        return "redirect:/flows/" + id;
+    }
+
     @PostMapping("/{id}/candidates")
     @PreAuthorize("@flowAuthorization.canOperateActiveStep(#id, authentication)")
     public String addCandidate(
             @PathVariable Long id,
-            @RequestParam String startAt,
+            @RequestParam String startDate,
+            @RequestParam String startTime,
             RedirectAttributes redirectAttributes) {
         try {
-            flowService.addCandidateToActiveStep(id, LocalDateTime.parse(startAt, DT_LOCAL));
-            redirectAttributes.addFlashAttribute("message", "候補を追加しました。");
+            flowService.addCandidateToActiveStep(id, parseDateAndTime(startDate, startTime));
+            redirectAttributes.addFlashAttribute("message", "日時を設定しました。");
         } catch (IllegalArgumentException | IllegalStateException ex) {
             redirectAttributes.addFlashAttribute("error", ex.getMessage());
         }
@@ -261,10 +326,47 @@ public class FlowController {
         }
     }
 
+    @PostMapping("/from-template")
+    public String createFromTemplate(
+            @RequestParam Long templateId,
+            @RequestParam(required = false) String title,
+            Principal principal,
+            RedirectAttributes redirectAttributes) {
+        try {
+            Long flowId = flowService.createFlowFromTemplate(templateId, title, resolveCurrentUserId(principal));
+            return "redirect:/flows/" + flowId;
+        } catch (IllegalArgumentException ex) {
+            redirectAttributes.addFlashAttribute("error", ex.getMessage());
+            return "redirect:/flows/new";
+        }
+    }
+
+    private LocalDateTime parseDateAndTime(String startDate, String startTime) {
+        try {
+            LocalDate date = LocalDate.parse(startDate);
+            LocalTime time = LocalTime.parse(startTime);
+            if (!(time.getMinute() == 0 || time.getMinute() == 30) || time.getSecond() != 0 || time.getNano() != 0) {
+                throw new IllegalArgumentException("設定時間は30分刻みで指定してください。");
+            }
+            return date.atTime(time);
+        } catch (DateTimeParseException ex) {
+            throw new IllegalArgumentException("設定日付または設定時間の形式が不正です。");
+        }
+    }
+
     private List<Participant> loadUserParticipants() {
         return participantRepo.findAll().stream()
                 .filter(p -> "USER".equals(p.getParticipantType()))
                 .sorted(Comparator.comparing(Participant::getDisplayName, String.CASE_INSENSITIVE_ORDER))
                 .collect(Collectors.toList());
+    }
+
+    private Long resolveCurrentUserId(Principal principal) {
+        if (principal == null) {
+            return null;
+        }
+        return userRepo.findByUsername(principal.getName())
+                .map(u -> u.getId())
+                .orElse(null);
     }
 }

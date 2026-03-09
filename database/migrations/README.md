@@ -6,6 +6,7 @@ These scripts normalize the current schema in safe phases:
 2. `V2__schema_phase2_backfill_data.sql`
 3. `V3__schema_phase3_constraints_and_indexes.sql`
 4. `V4__schema_phase4_drop_legacy_columns.sql` (run only after application code no longer uses legacy columns)
+5. `V5__schema_add_flow_templates.sql`
 
 ### Important
 

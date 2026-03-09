@@ -24,16 +24,32 @@ public class Flow {
 
     private Long createdByUserId;
 
+    private Long sourceTemplateId;
+
+    private String sourceTemplateNameSnapshot;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     protected Flow() {}
 
     public Flow(String title, int durationMinutes, LocalDateTime startFrom, Long createdByUserId) {
+        this(title, durationMinutes, startFrom, createdByUserId, null, null);
+    }
+
+    public Flow(
+            String title,
+            int durationMinutes,
+            LocalDateTime startFrom,
+            Long createdByUserId,
+            Long sourceTemplateId,
+            String sourceTemplateNameSnapshot) {
         this.title = title;
         this.durationMinutes = durationMinutes;
         this.startFrom = startFrom;
         this.createdByUserId = createdByUserId;
+        this.sourceTemplateId = sourceTemplateId;
+        this.sourceTemplateNameSnapshot = sourceTemplateNameSnapshot;
     }
 
     @PrePersist
@@ -50,6 +66,8 @@ public class Flow {
     public int getCurrentStepOrder() { return currentStepOrder; }
     public LocalDateTime getStartFrom() { return startFrom; }
     public Long getCreatedByUserId() { return createdByUserId; }
+    public Long getSourceTemplateId() { return sourceTemplateId; }
+    public String getSourceTemplateNameSnapshot() { return sourceTemplateNameSnapshot; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 
     public void updateBasics(String title, int durationMinutes, LocalDateTime startFrom) {
