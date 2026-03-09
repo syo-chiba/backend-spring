@@ -55,6 +55,7 @@ public class FlowController {
             @RequestParam(required = false, defaultValue = "week") String view,
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) String weekStart,
+            Authentication authentication,
             Model model) {
         String normalizedSort = "created_desc".equals(sort) ? "created_desc" : "created_asc";
         String toggleSort = "created_asc".equals(normalizedSort) ? "created_desc" : "created_asc";
@@ -87,6 +88,7 @@ public class FlowController {
         model.addAttribute("keyword", keyword == null ? "" : keyword);
         model.addAttribute("sort", normalizedSort);
         model.addAttribute("toggleSort", toggleSort);
+        model.addAttribute("isAdmin", flowAuthorization.isAdmin(authentication));
         return "flows/list";
     }
 
