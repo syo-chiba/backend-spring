@@ -50,6 +50,31 @@ public interface StepCandidateRepository extends JpaRepository<StepCandidate, Lo
             @Param("newStartAt") LocalDateTime newStartAt,
             @Param("newEndAt") LocalDateTime newEndAt);
 
+    @Query(value = """
+            SELECT
+                f.title AS flowTitle,
+                COALESCE(p.display_name, CONCAT('participant#', fs.participant_id)) AS participantName,
+                sc.start_at AS startAt,
+                sc.end_at AS endAt
+            FROM step_candidates sc
+            INNER JOIN flow_steps fs ON fs.id = sc.flow_step_id
+            INNER JOIN flows f ON f.id = fs.flow_id
+            LEFT JOIN participants p ON p.id = fs.participant_id
+            WHERE fs.participant_id = :participantId
+              AND fs.status = 'ACTIVE'
+              AND sc.status IN ('PROPOSED', 'SELECTED')
+              AND (:excludeFlowStepId IS NULL OR sc.flow_step_id <> :excludeFlowStepId)
+              AND sc.start_at < :newEndAt
+              AND sc.end_at > :newStartAt
+            ORDER BY sc.start_at ASC
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<ConflictCandidateView> findFirstTimeConflictForParticipant(
+            @Param("participantId") Long participantId,
+            @Param("excludeFlowStepId") Long excludeFlowStepId,
+            @Param("newStartAt") LocalDateTime newStartAt,
+            @Param("newEndAt") LocalDateTime newEndAt);
+
     interface ConflictCandidateView {
         String getFlowTitle();
 

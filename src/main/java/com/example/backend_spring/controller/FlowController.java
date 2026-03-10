@@ -93,10 +93,11 @@ public class FlowController {
     }
 
     @GetMapping("/new")
-    public String newForm(Model model, Principal principal) {
+    public String newForm(
+            Model model,
+            Principal principal) {
         Long currentUserId = resolveCurrentUserId(principal);
         model.addAttribute("minDate", flowService.getReservableMinDate());
-        model.addAttribute("maxDate", flowService.getReservableMaxDate());
         model.addAttribute("userParticipants", loadUserParticipants());
         model.addAttribute("availableTemplates", flowService.listAvailableTemplates(currentUserId));
         return "flows/new";
@@ -105,15 +106,20 @@ public class FlowController {
     @PostMapping
     public String create(
             @RequestParam String title,
-            @RequestParam int durationMinutes,
+            @RequestParam(required = false, defaultValue = "60") int durationMinutes,
             @RequestParam(required = false) String participants,
             @RequestParam(required = false) String externalParticipants,
             @RequestParam(required = false) List<Long> participantUserIds,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String startTime,
             Principal principal,
             RedirectAttributes redirectAttributes) {
 
         try {
             LocalDateTime start = flowService.getReservableMinDate().atStartOfDay();
+            if (startDate != null && !startDate.isBlank() && startTime != null && !startTime.isBlank()) {
+                start = parseDateAndTime(startDate, startTime);
+            }
 
             String rawExternalParticipants = externalParticipants;
             if ((rawExternalParticipants == null || rawExternalParticipants.isBlank())
@@ -150,12 +156,20 @@ public class FlowController {
     }
 
     @GetMapping("/{id}")
-    public String detail(@PathVariable Long id, Model model, Authentication authentication) {
+    public String detail(
+            @PathVariable Long id,
+            @RequestParam(required = false) String calendarCursor,
+            Model model,
+            Authentication authentication,
+            Principal principal) {
 
         var flow = flowService.getFlow(id);
         var steps = flowService.getSteps(id);
         var activeOpt = flowService.findActiveStep(id);
         var candidates = activeOpt.map(step -> flowService.getCandidates(step.getId())).orElse(List.of());
+        Long currentUserId = resolveCurrentUserId(principal);
+        LocalDate userCalendarCursor = parseDate(calendarCursor);
+        var userWeekCalendar = flowService.buildWeeklyCalendarViewForUser(currentUserId, userCalendarCursor);
 
         model.addAttribute("flow", flow);
         model.addAttribute("steps", steps);
@@ -166,19 +180,32 @@ public class FlowController {
         model.addAttribute("canManageFlow", flowAuthorization.canManageFlow(id, authentication));
         model.addAttribute("canOperateActiveStep", flowAuthorization.canOperateActiveStep(id, authentication));
         model.addAttribute("isAdmin", flowAuthorization.isAdmin(authentication));
+        model.addAttribute("userWeekCalendar", userWeekCalendar);
+        model.addAttribute("userWeekLabel", userWeekCalendar.getWeekLabel());
+        model.addAttribute("userWeekCurrentCursor", userWeekCalendar.getWeekStart());
+        model.addAttribute("userWeekPrevCursor", userWeekCalendar.getPrevWeekStart());
+        model.addAttribute("userWeekNextCursor", userWeekCalendar.getNextWeekStart());
+        model.addAttribute("userWeekTodayCursor", LocalDate.now().toString());
 
         return "flows/detail";
     }
 
     @GetMapping("/{id}/edit")
     @PreAuthorize("@flowAuthorization.canManageFlow(#id, authentication)")
-    public String editForm(@PathVariable Long id, Model model) {
+    public String editForm(
+            @PathVariable Long id,
+            @RequestParam(required = false) String calendarCursor,
+            Model model,
+            Principal principal) {
         var flow = flowService.getFlow(id);
+        Long currentUserId = resolveCurrentUserId(principal);
+        LocalDate userCalendarCursor = parseDate(calendarCursor);
         model.addAttribute("flow", flow);
         model.addAttribute("steps", flowService.getSteps(id));
         model.addAttribute("userParticipants", loadUserParticipants());
         model.addAttribute("minDate", flowService.getReservableMinDate());
         model.addAttribute("maxDate", flowService.getReservableMaxDate());
+        addUserWeekCalendarModel(model, currentUserId, userCalendarCursor);
         return "flows/edit";
     }
 
@@ -370,5 +397,15 @@ public class FlowController {
         return userRepo.findByUsername(principal.getName())
                 .map(u -> u.getId())
                 .orElse(null);
+    }
+
+    private void addUserWeekCalendarModel(Model model, Long currentUserId, LocalDate cursor) {
+        var userWeekCalendar = flowService.buildWeeklyCalendarViewForUser(currentUserId, cursor);
+        model.addAttribute("userWeekCalendar", userWeekCalendar);
+        model.addAttribute("userWeekLabel", userWeekCalendar.getWeekLabel());
+        model.addAttribute("userWeekCurrentCursor", userWeekCalendar.getWeekStart());
+        model.addAttribute("userWeekPrevCursor", userWeekCalendar.getPrevWeekStart());
+        model.addAttribute("userWeekNextCursor", userWeekCalendar.getNextWeekStart());
+        model.addAttribute("userWeekTodayCursor", LocalDate.now().toString());
     }
 }
