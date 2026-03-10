@@ -1,8 +1,11 @@
 package com.example.backend_spring.controller;
 
 import java.util.List;
+import java.util.ArrayList;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DataAccessException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Controller;
@@ -102,6 +105,9 @@ public class AdminUserController {
 
     @PostMapping("/{id}/delete")
     public String deleteUser(@PathVariable Long id, RedirectAttributes redirectAttributes) {
+        jdbcTemplate.update(
+                "DELETE FROM participants WHERE participant_type = 'USER' AND user_id = ?",
+                id);
         var user = userRepo.findById(id).orElseThrow();
         userRepo.delete(user);
         redirectAttributes.addFlashAttribute("message", "ユーザーを削除しました。");
@@ -127,19 +133,33 @@ public class AdminUserController {
             redirectAttributes.addFlashAttribute("error", "Username is required.");
             return "redirect:/admin/users";
         }
+        if (normalizedUsername.length() > 50) {
+            redirectAttributes.addFlashAttribute("error", "Username must be 50 characters or less.");
+            return "redirect:/admin/users";
+        }
         if (password == null || password.length() < 8) {
             redirectAttributes.addFlashAttribute("error", "Password must be at least 8 characters.");
             return "redirect:/admin/users";
         }
-        if (userRepo.findByUsername(normalizedUsername).isPresent()) {
+        if (userRepo.findByUsernameIgnoreCase(normalizedUsername).isPresent()) {
             redirectAttributes.addFlashAttribute("error", "Username already exists.");
             return "redirect:/admin/users";
         }
 
-        UserAccount saved = userRepo.save(new UserAccount(
-                normalizedUsername,
-                passwordEncoder.encode(password),
-                enabledFlag));
+        Long savedUserId;
+        try {
+            savedUserId = insertUserWithSchemaCompatibility(
+                    normalizedUsername,
+                    passwordEncoder.encode(password),
+                    enabledFlag);
+        } catch (DataIntegrityViolationException ex) {
+            redirectAttributes.addFlashAttribute("error", "User creation failed due to DB constraint (duplicate username or schema mismatch).");
+            return "redirect:/admin/users";
+        } catch (RuntimeException ex) {
+            String cause = ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage();
+            redirectAttributes.addFlashAttribute("error", "User creation failed. cause=" + cause);
+            return "redirect:/admin/users";
+        }
 
         String participantDisplayName = normalizedDisplayName.isEmpty() ? normalizedUsername : normalizedDisplayName;
 
@@ -160,14 +180,73 @@ public class AdminUserController {
                       WHERE ur.user_id = ?
                         AND ur.role_id = r.id
                   )
-                """, saved.getId(), saved.getId());
+                """, savedUserId, savedUserId);
 
-        participantRepo.findByParticipantTypeAndUserId("USER", saved.getId())
-                .orElseGet(() -> participantRepo.save(new Participant("USER", saved.getId(), participantDisplayName)));
+        participantRepo.findByParticipantTypeAndUserId("USER", savedUserId)
+                .orElseGet(() -> participantRepo.save(new Participant("USER", savedUserId, participantDisplayName)));
 
         redirectAttributes.addFlashAttribute(
                 "message",
                 "User created: " + normalizedUsername + " (participant: " + participantDisplayName + ")");
         return "redirect:/admin/users";
+    }
+
+    private Long insertUserWithSchemaCompatibility(String username, String encodedPassword, boolean enabledFlag) {
+        List<String> columns = new ArrayList<>();
+        List<String> values = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+
+        columns.add("username");
+        values.add("?");
+        params.add(username);
+
+        columns.add("password");
+        values.add("?");
+        params.add(encodedPassword);
+
+        columns.add("enabled");
+        values.add("?");
+        params.add(enabledFlag);
+
+        if (hasColumn("users", "roles")) {
+            columns.add("roles");
+            values.add("?");
+            params.add("ROLE_USER");
+        }
+        if (hasColumn("users", "created_at")) {
+            columns.add("created_at");
+            values.add("CURRENT_TIMESTAMP(6)");
+        }
+        if (hasColumn("users", "updated_at")) {
+            columns.add("updated_at");
+            values.add("CURRENT_TIMESTAMP(6)");
+        }
+
+        String sql = "INSERT INTO users(" + String.join(", ", columns) + ") VALUES (" + String.join(", ", values) + ")";
+        jdbcTemplate.update(sql, params.toArray());
+
+        return jdbcTemplate.queryForObject(
+                "SELECT id FROM users WHERE username = ? ORDER BY id DESC LIMIT 1",
+                Long.class,
+                username);
+    }
+
+    private boolean hasColumn(String tableName, String columnName) {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    """
+                    SELECT COUNT(1)
+                    FROM information_schema.columns
+                    WHERE table_schema = DATABASE()
+                      AND table_name = ?
+                      AND column_name = ?
+                    """,
+                    Integer.class,
+                    tableName,
+                    columnName);
+            return count != null && count > 0;
+        } catch (DataAccessException ex) {
+            return false;
+        }
     }
 }

@@ -77,4 +77,8 @@ public class Participant {
     public String getDisplayName() {
         return displayName;
     }
+
+    public void updateDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
 }

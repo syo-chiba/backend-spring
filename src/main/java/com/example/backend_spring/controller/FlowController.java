@@ -88,6 +88,7 @@ public class FlowController {
         model.addAttribute("sort", normalizedSort);
         model.addAttribute("toggleSort", toggleSort);
         model.addAttribute("isAdmin", flowAuthorization.isAdmin(authentication));
+        model.addAttribute("currentDisplayName", resolveCurrentDisplayName(authentication));
         return "flows/list";
     }
 
@@ -353,8 +354,7 @@ public class FlowController {
     }
 
     private List<Participant> loadUserParticipants() {
-        return participantRepo.findAll().stream()
-                .filter(p -> "USER".equals(p.getParticipantType()))
+        return participantRepo.findActiveUserParticipants().stream()
                 .sorted(Comparator.comparing(Participant::getDisplayName, String.CASE_INSENSITIVE_ORDER))
                 .collect(Collectors.toList());
     }
@@ -366,6 +366,19 @@ public class FlowController {
         return userRepo.findByUsername(principal.getName())
                 .map(u -> u.getId())
                 .orElse(null);
+    }
+
+    private String resolveCurrentDisplayName(Authentication authentication) {
+        if (authentication == null || authentication.getName() == null) {
+            return "";
+        }
+
+        return userRepo.findByUsername(authentication.getName())
+                .map(u -> participantRepo.findByParticipantTypeAndUserId("USER", u.getId())
+                        .map(Participant::getDisplayName)
+                        .filter(name -> name != null && !name.isBlank())
+                        .orElse(u.getUsername()))
+                .orElse(authentication.getName());
     }
 
     private void addUserWeekCalendarModel(Model model, Long currentUserId, LocalDate cursor) {

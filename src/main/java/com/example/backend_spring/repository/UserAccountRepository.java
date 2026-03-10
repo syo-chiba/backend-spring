@@ -11,6 +11,7 @@ import com.example.backend_spring.domain.UserAccount;
 
 public interface UserAccountRepository extends JpaRepository<UserAccount, Long> {
     Optional<UserAccount> findByUsername(String username);
+    Optional<UserAccount> findByUsernameIgnoreCase(String username);
 
     @Query(value = """
             SELECT r.name
