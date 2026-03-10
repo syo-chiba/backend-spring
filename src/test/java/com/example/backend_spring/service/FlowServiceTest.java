@@ -157,6 +157,7 @@ class FlowServiceTest {
             return List.of(c);
         });
         when(stepRepo.findByFlowIdAndStepOrder(31L, 2)).thenReturn(null);
+        when(stepRepo.save(any(FlowStep.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         flowService.addCandidateToActiveStep(31L, LocalDateTime.of(2026, 2, 23, 11, 0));
 
@@ -193,10 +194,34 @@ class FlowServiceTest {
             return List.of(c);
         });
         when(stepRepo.findByFlowIdAndStepOrder(32L, 2)).thenReturn(null);
+        when(stepRepo.save(any(FlowStep.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         flowService.addCandidateToActiveStep(32L, LocalDateTime.of(2026, 2, 23, 10, 0));
 
         verify(candidateRepo, times(2)).save(any(StepCandidate.class));
+    }
+
+    @Test
+    void addCandidateToActiveStep_shouldRejectWhenEarlierThanPreviousStepEnd() {
+        Flow flow = new Flow("面談", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 1L);
+        ReflectionTestUtils.setField(flow, "currentStepOrder", 2);
+
+        FlowStep previous = new FlowStep(40L, 1, "A");
+        previous.confirm(LocalDateTime.of(2026, 2, 23, 10, 0), LocalDateTime.of(2026, 2, 23, 11, 0));
+
+        FlowStep active = new FlowStep(40L, 2, "B");
+        active.activate();
+        ReflectionTestUtils.setField(active, "id", 2L);
+
+        when(flowRepo.findById(40L)).thenReturn(Optional.of(flow));
+        when(stepRepo.findByFlowIdAndStepOrder(40L, 2)).thenReturn(active);
+        when(stepRepo.findByFlowIdAndStepOrder(40L, 1)).thenReturn(previous);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> flowService.addCandidateToActiveStep(40L, LocalDateTime.of(2026, 2, 23, 10, 30)));
+
+        assertTrue(ex.getMessage().contains("前ステップ終了日時より後"));
+        verify(candidateRepo, never()).save(any(StepCandidate.class));
     }
 
     @Test
@@ -230,6 +255,39 @@ class FlowServiceTest {
         verify(candidateRepo).save(candidate);
         verify(stepRepo).save(active);
         verify(stepRepo).save(next);
+        verify(flowRepo).save(flow);
+    }
+
+    @Test
+    void selectCandidateForActiveStep_shouldAppendNewStepWhenLastStepIsSelected() {
+        Flow flow = new Flow("面談", 60, LocalDateTime.of(2026, 2, 21, 9, 0), 1L);
+        ReflectionTestUtils.setField(flow, "currentStepOrder", 2);
+        ReflectionTestUtils.setField(flow, "status", "IN_PROGRESS");
+
+        FlowStep lastStep = new FlowStep(21L, 2, "B");
+        lastStep.activate();
+        ReflectionTestUtils.setField(lastStep, "id", 2L);
+
+        FlowStep firstStep = new FlowStep(21L, 1, "A");
+        firstStep.confirm(LocalDateTime.of(2026, 2, 22, 9, 0), LocalDateTime.of(2026, 2, 22, 10, 0));
+        ReflectionTestUtils.setField(firstStep, "id", 1L);
+
+        StepCandidate candidate = new StepCandidate(2L, LocalDateTime.of(2026, 2, 24, 10, 0), LocalDateTime.of(2026, 2, 24, 11, 0));
+        ReflectionTestUtils.setField(candidate, "id", 199L);
+
+        when(flowRepo.findById(21L)).thenReturn(Optional.of(flow));
+        when(stepRepo.findByFlowIdAndStepOrder(21L, 2)).thenReturn(lastStep);
+        when(candidateRepo.findById(199L)).thenReturn(Optional.of(candidate));
+        when(candidateRepo.findByFlowStepIdOrderByStartAtAsc(2L)).thenReturn(List.of(candidate));
+        when(stepRepo.findByFlowIdAndStepOrder(21L, 3)).thenReturn(null);
+        when(stepRepo.findByFlowIdAndStepOrder(21L, 1)).thenReturn(firstStep);
+        when(stepRepo.save(any(FlowStep.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        flowService.selectCandidateForActiveStep(21L, 199L);
+
+        assertEquals(3, flow.getCurrentStepOrder());
+        assertEquals("IN_PROGRESS", flow.getStatus());
+        verify(stepRepo, times(3)).save(any(FlowStep.class));
         verify(flowRepo).save(flow);
     }
 

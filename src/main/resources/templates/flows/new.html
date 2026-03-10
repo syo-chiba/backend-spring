@@ -10,7 +10,7 @@
   <div class="top-bar">
     <div>
       <h1>フロー新規作成</h1>
-      <p class="muted">タイトルと参加者を設定して新しいフローを作成します。</p>
+      <p class="muted">氏名で候補を検索し、ステップ順に参加者を追加してください。</p>
     </div>
     <div style="display:flex; gap:8px;">
       <form method="post" action="/logout" style="margin:0;">
@@ -20,32 +20,6 @@
       <a class="btn btn-secondary" href="/flows">一覧へ戻る</a>
     </div>
   </div>
-
-  <section class="card" style="margin-bottom:16px;" th:if="${!#lists.isEmpty(availableTemplates)}">
-    <h2>テンプレートから作成</h2>
-    <p class="muted">よく使う構成をそのまま複製できます。</p>
-    <table>
-      <tr>
-        <th>テンプレート名</th>
-        <th>所要時間</th>
-        <th>公開範囲</th>
-        <th>操作</th>
-      </tr>
-      <tr th:each="t : ${availableTemplates}">
-        <td th:text="${t.name}">テンプレート名</td>
-        <td><span th:text="${t.durationMinutes}">60</span> 分</td>
-        <td th:text="${t.visibility}">PRIVATE</td>
-        <td>
-          <form method="post" action="/flows/from-template" style="display:flex; gap:8px; align-items:center;">
-            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
-            <input type="hidden" name="templateId" th:value="${t.id}" />
-            <input type="text" name="title" placeholder="タイトル（任意）" />
-            <button class="btn btn-secondary" type="submit">このテンプレートで作成</button>
-          </form>
-        </td>
-      </tr>
-    </table>
-  </section>
 
   <section class="card">
     <div th:if="${error}" class="alert alert-error" th:text="${error}"></div>
@@ -63,21 +37,28 @@
       </div>
 
       <div class="row">
-        <label>参加ユーザー（必須）</label>
-        <div th:if="${#lists.isEmpty(userParticipants)}" class="muted">
-          参加可能なユーザーがいません。管理者画面でユーザーを作成してください。
+        <label>参加者を追加（氏名入力）</label>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <input id="participantSearchInput"
+                 type="text"
+                 list="participantCandidates"
+                 placeholder="例: Aさん"
+                 style="min-width:260px;" />
+          <button id="addParticipantStepButton" class="btn btn-secondary" type="button">ステップに追加</button>
         </div>
-        <div th:unless="${#lists.isEmpty(userParticipants)}" class="participant-list">
-          <label th:each="p : ${userParticipants}" class="participant-option">
-            <input type="checkbox" name="participantUserIds" th:value="${p.id}" />
-            <span th:text="${p.displayName}">user</span>
-          </label>
-        </div>
+        <datalist id="participantCandidates">
+          <option th:each="p : ${userParticipants}"
+                  th:value="${p.displayName}"
+                  th:attr="data-id=${p.id}">候補</option>
+        </datalist>
+        <small class="muted">同じ参加者を複数回追加できます（例: A→B→A→B）。</small>
       </div>
 
       <div class="row">
-        <label>外部参加者（任意・改行区切り）</label>
-        <textarea name="externalParticipants" rows="4" placeholder="Aさん&#10;Bさん"></textarea>
+        <label>ステップ順</label>
+        <div id="stepOrderList" class="participant-list"></div>
+        <div id="stepOrderEmpty" class="muted">まだ参加者が追加されていません。</div>
+        <div id="participantHiddenInputs"></div>
       </div>
 
       <button class="btn btn-primary" type="submit">作成する</button>
@@ -85,18 +66,83 @@
   </section>
 </main>
 
-<script>
+<script th:inline="javascript">
   (function () {
-    const createFlowForm = document.getElementById('createFlowForm');
-    if (!createFlowForm) {
+    const participants = /*[[${userParticipants}]]*/ [];
+    const byName = new Map();
+    participants.forEach((p) => byName.set((p.displayName || '').trim(), p));
+
+    const form = document.getElementById('createFlowForm');
+    const searchInput = document.getElementById('participantSearchInput');
+    const addButton = document.getElementById('addParticipantStepButton');
+    const stepOrderList = document.getElementById('stepOrderList');
+    const emptyLabel = document.getElementById('stepOrderEmpty');
+    const hiddenInputs = document.getElementById('participantHiddenInputs');
+    if (!form || !searchInput || !addButton || !stepOrderList || !emptyLabel || !hiddenInputs) {
       return;
     }
 
-    createFlowForm.addEventListener('submit', function (event) {
-      const checked = createFlowForm.querySelectorAll('input[name="participantUserIds"]:checked').length;
-      if (checked === 0) {
+    const selectedSteps = [];
+
+    function render() {
+      stepOrderList.innerHTML = '';
+      hiddenInputs.innerHTML = '';
+      emptyLabel.style.display = selectedSteps.length === 0 ? 'block' : 'none';
+
+      selectedSteps.forEach((step, idx) => {
+        const chip = document.createElement('div');
+        chip.className = 'participant-option';
+        chip.style.display = 'inline-flex';
+        chip.style.alignItems = 'center';
+        chip.style.gap = '8px';
+        chip.innerHTML = '<b>#' + (idx + 1) + '</b> <span>' + step.displayName + '</span>';
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'btn btn-secondary';
+        removeBtn.textContent = '削除';
+        removeBtn.addEventListener('click', function () {
+          selectedSteps.splice(idx, 1);
+          render();
+        });
+        chip.appendChild(removeBtn);
+        stepOrderList.appendChild(chip);
+
+        const hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.name = 'participantUserIds';
+        hidden.value = String(step.id);
+        hiddenInputs.appendChild(hidden);
+      });
+    }
+
+    function addCurrentInput() {
+      const name = (searchInput.value || '').trim();
+      if (!name) {
+        return;
+      }
+      const participant = byName.get(name);
+      if (!participant) {
+        alert('候補一覧にある氏名を選択してください。');
+        return;
+      }
+      selectedSteps.push({ id: participant.id, displayName: participant.displayName });
+      searchInput.value = '';
+      render();
+    }
+
+    addButton.addEventListener('click', addCurrentInput);
+    searchInput.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
         event.preventDefault();
-        alert('参加ユーザーを1名以上選択してください。');
+        addCurrentInput();
+      }
+    });
+
+    form.addEventListener('submit', function (event) {
+      if (selectedSteps.length === 0) {
+        event.preventDefault();
+        alert('参加者を1つ以上追加してください。');
       }
     });
   })();

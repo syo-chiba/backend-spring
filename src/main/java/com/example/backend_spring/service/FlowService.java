@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -104,10 +103,9 @@ public class FlowService {
 
         List<FlowStep> steps = new ArrayList<>();
         int order = 1;
-        Set<Long> seenParticipantIds = new java.util.LinkedHashSet<>();
         List<Long> safeParticipantIds = participantIds == null ? List.of() : participantIds;
         for (Long participantId : safeParticipantIds) {
-            if (participantId == null || !seenParticipantIds.add(participantId)) {
+            if (participantId == null) {
                 continue;
             }
             Participant participant = participantRepo.findById(participantId)
@@ -125,26 +123,12 @@ public class FlowService {
             order++;
         }
 
-        List<String> safeExternalParticipants = externalParticipants == null ? List.of() : externalParticipants;
-        for (String p : safeExternalParticipants) {
-            String name = p == null ? "" : p.trim();
-            if (name.isEmpty()) {
-                continue;
-            }
-
-            Participant participant = resolveOrCreateParticipant(name);
-            FlowStep step = new FlowStep(saved.getId(), order, participant.getId(), participant.getDisplayName());
-            if (order == 1) {
-                step.activate();
-            }
-            steps.add(step);
-            order++;
-        }
-
         if (steps.isEmpty()) {
             throw new IllegalArgumentException("\u53c2\u52a0\u8005\u304c1\u4eba\u3082\u3044\u307e\u305b\u3093\u3002");
         }
 
+        saved.ensureStepCycleSize(steps.size());
+        flowRepo.save(saved);
         stepRepo.saveAll(steps);
         return saved.getId();
     }
@@ -366,6 +350,7 @@ public class FlowService {
             throw new IllegalArgumentException("未設定のステップはこの画面から変更できません。");
         }
 
+        assertAfterPreviousStep(flowId, step.getStepOrder(), startAt, "面談設定日時");
         LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
         assertNoOwnerTimeOverlap(flow, startAt, endAt, stepId);
         assertNoParticipantTimeOverlap(step.getParticipantId(), startAt, endAt, stepId);
@@ -394,6 +379,7 @@ public class FlowService {
             throw new IllegalArgumentException("担当ユーザーとして設定できない参加者です。");
         }
 
+        assertAfterPreviousStep(flowId, step.getStepOrder(), startAt, "面談設定日時");
         LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
         assertNoOwnerTimeOverlap(flow, startAt, endAt, stepId);
         assertNoParticipantTimeOverlap(participant.getId(), startAt, endAt, stepId);
@@ -537,6 +523,7 @@ public class FlowService {
         FlowStep active = getActiveStep(flowId);
 
         validateReservableDateTime(startAt, "\u5019\u88dc\u65e5\u6642");
+        assertAfterPreviousStep(flowId, active.getStepOrder(), startAt, "\u5019\u88dc\u65e5\u6642");
 
         if (startAt.isBefore(flow.getStartFrom())) {
             throw new IllegalArgumentException("\u5019\u88dc\u65e5\u6642\u304c\u958b\u59cb\u53ef\u80fd\u65e5\u6642\u3088\u308a\u524d\u3067\u3059\u3002startAt=" + startAt + ", startFrom=" + flow.getStartFrom());
@@ -584,14 +571,28 @@ public class FlowService {
         stepRepo.save(active);
         candidateRepo.save(candidate);
 
-        flow.moveToNextStep();
-        FlowStep next = stepRepo.findByFlowIdAndStepOrder(flowId, flow.getCurrentStepOrder());
+        int nextStepOrder = active.getStepOrder() + 1;
+        FlowStep next = stepRepo.findByFlowIdAndStepOrder(flowId, nextStepOrder);
         if (next == null) {
-            flow.markDone();
-        } else {
-            next.activate();
-            stepRepo.save(next);
+            int cycleSize = resolveStepCycleSize(flow, active);
+            int templateStepOrder = ((nextStepOrder - 1) % cycleSize) + 1;
+            FlowStep templateStep = stepRepo.findByFlowIdAndStepOrder(flowId, templateStepOrder);
+            if (templateStep == null) {
+                throw new IllegalStateException("次ステップ生成元が見つかりません。flowId=" + flowId + ", stepOrder=" + templateStepOrder);
+            }
+            applyParticipantName(templateStep);
+
+            next = new FlowStep(
+                    flowId,
+                    nextStepOrder,
+                    templateStep.getParticipantId(),
+                    templateStep.getParticipantName());
+            next = stepRepo.save(next);
         }
+
+        flow.moveToStep(next.getStepOrder());
+        next.activate();
+        stepRepo.save(next);
 
         flowRepo.save(flow);
     }
@@ -954,6 +955,39 @@ public class FlowService {
                     "\u53c2\u52a0\u8005\u306e\u78ba\u5b9a\u6e08\u307f\u6642\u9593\u304c\u91cd\u8907\u3057\u3066\u3044\u307e\u3059: \u30d5\u30ed\u30fc=" + c.getFlowTitle()
                             + ", \u53c2\u52a0\u8005=" + c.getParticipantName()
                             + ", \u65e2\u5b58=" + c.getStartAt() + " - " + c.getEndAt());
+        }
+    }
+
+    private int resolveStepCycleSize(Flow flow, FlowStep activeStep) {
+        Integer configured = flow.getStepCycleSize();
+        if (configured != null && configured > 0) {
+            return configured;
+        }
+
+        int inferred = Math.max(1, activeStep.getStepOrder());
+        flow.ensureStepCycleSize(inferred);
+        return inferred;
+    }
+
+    private void assertAfterPreviousStep(Long flowId, int stepOrder, LocalDateTime startAt, String label) {
+        if (stepOrder <= 1) {
+            return;
+        }
+
+        FlowStep previous = stepRepo.findByFlowIdAndStepOrder(flowId, stepOrder - 1);
+        if (previous == null) {
+            return;
+        }
+
+        LocalDateTime previousBoundary = previous.getConfirmedEndAt() != null
+                ? previous.getConfirmedEndAt()
+                : previous.getConfirmedStartAt();
+        if (previousBoundary == null) {
+            throw new IllegalArgumentException("前ステップの面談日時が未確定のため、このステップには日時を設定できません。");
+        }
+        if (!startAt.isAfter(previousBoundary)) {
+            throw new IllegalArgumentException(
+                    label + "は前ステップ終了日時より後で指定してください。previous=" + previousBoundary + ", startAt=" + startAt);
         }
     }
 

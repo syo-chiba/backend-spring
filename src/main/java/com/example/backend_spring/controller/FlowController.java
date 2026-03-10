@@ -5,7 +5,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -96,10 +95,8 @@ public class FlowController {
     public String newForm(
             Model model,
             Principal principal) {
-        Long currentUserId = resolveCurrentUserId(principal);
         model.addAttribute("minDate", flowService.getReservableMinDate());
         model.addAttribute("userParticipants", loadUserParticipants());
-        model.addAttribute("availableTemplates", flowService.listAvailableTemplates(currentUserId));
         return "flows/new";
     }
 
@@ -107,8 +104,6 @@ public class FlowController {
     public String create(
             @RequestParam String title,
             @RequestParam(required = false, defaultValue = "60") int durationMinutes,
-            @RequestParam(required = false) String participants,
-            @RequestParam(required = false) String externalParticipants,
             @RequestParam(required = false) List<Long> participantUserIds,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String startTime,
@@ -121,17 +116,6 @@ public class FlowController {
                 start = parseDateAndTime(startDate, startTime);
             }
 
-            String rawExternalParticipants = externalParticipants;
-            if ((rawExternalParticipants == null || rawExternalParticipants.isBlank())
-                    && participants != null) {
-                // Backward compatibility with older form field name.
-                rawExternalParticipants = participants;
-            }
-
-            List<String> externalParticipantList = Arrays.stream((rawExternalParticipants == null ? "" : rawExternalParticipants).split("\\r?\\n"))
-                    .map(String::trim)
-                    .filter(s -> !s.isEmpty())
-                    .collect(Collectors.toList());
             List<Long> selectedParticipantIds = participantUserIds == null ? List.of() : participantUserIds;
 
             Long createdByUserId = null;
@@ -147,7 +131,7 @@ public class FlowController {
                     start,
                     createdByUserId,
                     selectedParticipantIds,
-                    externalParticipantList);
+                    List.of());
             return "redirect:/flows/" + flowId;
         } catch (IllegalArgumentException ex) {
             redirectAttributes.addFlashAttribute("error", ex.getMessage());
@@ -299,17 +283,7 @@ public class FlowController {
             @RequestParam(required = false, defaultValue = "PRIVATE") String visibility,
             Principal principal,
             RedirectAttributes redirectAttributes) {
-        try {
-            Long templateId = flowService.createTemplateFromFlow(
-                    id,
-                    templateName,
-                    templateDescription,
-                    visibility,
-                    resolveCurrentUserId(principal));
-            redirectAttributes.addFlashAttribute("message", "テンプレートを作成しました。templateId=" + templateId);
-        } catch (IllegalArgumentException ex) {
-            redirectAttributes.addFlashAttribute("error", ex.getMessage());
-        }
+        redirectAttributes.addFlashAttribute("error", "テンプレート機能は現在保留中です。");
         return "redirect:/flows/" + id;
     }
 
@@ -361,13 +335,8 @@ public class FlowController {
             @RequestParam(required = false) String title,
             Principal principal,
             RedirectAttributes redirectAttributes) {
-        try {
-            Long flowId = flowService.createFlowFromTemplate(templateId, title, resolveCurrentUserId(principal));
-            return "redirect:/flows/" + flowId;
-        } catch (IllegalArgumentException ex) {
-            redirectAttributes.addFlashAttribute("error", ex.getMessage());
-            return "redirect:/flows/new";
-        }
+        redirectAttributes.addFlashAttribute("error", "テンプレート機能は現在保留中です。");
+        return "redirect:/flows/new";
     }
 
     private LocalDateTime parseDateAndTime(String startDate, String startTime) {
