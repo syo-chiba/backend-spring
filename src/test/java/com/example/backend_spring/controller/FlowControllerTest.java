@@ -2,7 +2,6 @@ package com.example.backend_spring.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash;
@@ -72,8 +71,7 @@ class FlowControllerTest {
         mockMvc.perform(post("/flows")
                         .param("title", "meeting")
                         .param("durationMinutes", "60")
-                        .param("participantUserIds", "1")
-                        .param("externalParticipants", "A\nB"))
+                        .param("participantUserIds", "1"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/flows/new"))
                 .andExpect(flash().attribute("error", "validation failed"));
@@ -113,8 +111,7 @@ class FlowControllerTest {
                         .principal(() -> "admin")
                         .param("title", "meeting")
                         .param("durationMinutes", "60")
-                        .param("participantUserIds", "1", "2")
-                        .param("externalParticipants", "A\nB"))
+                        .param("participantUserIds", "1", "2"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/flows/5"));
 
@@ -123,7 +120,6 @@ class FlowControllerTest {
         assertEquals(60, flowService.lastDurationMinutes);
         assertEquals(flowService.getReservableMinDate().atStartOfDay(), flowService.lastStartFrom);
         assertEquals(List.of(1L, 2L), flowService.lastParticipantIds);
-        assertTrue(flowService.lastParticipants.containsAll(List.of("A", "B")));
     }
 
     private static class StubFlowService extends FlowService {
@@ -131,7 +127,6 @@ class FlowControllerTest {
         private int lastDurationMinutes;
         private LocalDateTime lastStartFrom;
         private Long createdByUserId;
-        private List<String> lastParticipants;
         private List<Long> lastParticipantIds;
 
         private Long addCandidateFlowId;
@@ -160,7 +155,6 @@ class FlowControllerTest {
             this.lastStartFrom = startFrom;
             this.createdByUserId = createdByUserId;
             this.lastParticipantIds = participantIds;
-            this.lastParticipants = externalParticipants;
             return 5L;
         }
 

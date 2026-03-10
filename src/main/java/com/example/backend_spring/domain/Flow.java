@@ -28,6 +28,8 @@ public class Flow {
 
     private String sourceTemplateNameSnapshot;
 
+    private Integer stepCycleSize;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -68,6 +70,7 @@ public class Flow {
     public Long getCreatedByUserId() { return createdByUserId; }
     public Long getSourceTemplateId() { return sourceTemplateId; }
     public String getSourceTemplateNameSnapshot() { return sourceTemplateNameSnapshot; }
+    public Integer getStepCycleSize() { return stepCycleSize; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 
     public void updateBasics(String title, int durationMinutes, LocalDateTime startFrom) {
@@ -78,6 +81,23 @@ public class Flow {
 
     public void moveToNextStep() {
         this.currentStepOrder++;
+    }
+
+    public void moveToStep(int stepOrder) {
+        if (stepOrder < 1) {
+            throw new IllegalArgumentException("stepOrder must be >= 1");
+        }
+        this.currentStepOrder = stepOrder;
+        this.status = "IN_PROGRESS";
+    }
+
+    public void ensureStepCycleSize(int stepCycleSize) {
+        if (stepCycleSize < 1) {
+            throw new IllegalArgumentException("stepCycleSize must be >= 1");
+        }
+        if (this.stepCycleSize == null || this.stepCycleSize < 1) {
+            this.stepCycleSize = stepCycleSize;
+        }
     }
 
     public void markDone() {
