@@ -47,7 +47,7 @@ public class FlowAuthorization {
 
     public boolean canOperateActiveStep(Long flowId, Authentication authentication) {
         if (isAdmin(authentication)) {
-            return false;
+            return true;
         }
         Optional<Long> currentUserId = currentUserId(authentication);
         if (currentUserId.isEmpty()) {

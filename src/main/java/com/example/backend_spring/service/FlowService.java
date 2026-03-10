@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -444,6 +445,23 @@ public class FlowService {
         return buildWeeklyCalendarViewFromEvents(events, cursorDate);
     }
 
+    public WeeklyCalendarView buildWeeklyCalendarViewForFlowParticipants(Long flowId, LocalDate cursorDate) {
+        if (flowId == null) {
+            return buildWeeklyCalendarViewFromEvents(List.of(), cursorDate);
+        }
+
+        Set<Long> participantIds = stepRepo.findByFlowIdOrderByStepOrder(flowId).stream()
+                .map(FlowStep::getParticipantId)
+                .filter(id -> id != null)
+                .collect(Collectors.toCollection(java.util.LinkedHashSet::new));
+        if (participantIds.isEmpty()) {
+            return buildWeeklyCalendarViewFromEvents(List.of(), cursorDate);
+        }
+
+        List<CalendarSourceEvent> events = collectCalendarSourceEventsForParticipants(participantIds);
+        return buildWeeklyCalendarViewFromEvents(events, cursorDate);
+    }
+
     private WeeklyCalendarView buildWeeklyCalendarViewFromEvents(List<CalendarSourceEvent> events, LocalDate cursorDate) {
         LocalDate baseDate = cursorDate == null ? LocalDate.now(clock) : cursorDate;
         LocalDate weekStart = baseDate.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
@@ -640,7 +658,8 @@ public class FlowService {
                             "CONFIRMED",
                             buildEventTitle(flow, participantName),
                             buildTooltip(flow, participantName, "CONFIRMED", step.getConfirmedStartAt(), step.getConfirmedEndAt()),
-                            "/flows/" + flow.getId()));
+                            "/flows/" + flow.getId(),
+                            buildParticipantColorClass(participantName)));
                 }
 
                 if (!"ACTIVE".equals(step.getStatus()) || step.getId() == null) {
@@ -662,7 +681,8 @@ public class FlowService {
                             candidate.getStatus(),
                             buildEventTitle(flow, participantName),
                             buildTooltip(flow, participantName, candidate.getStatus(), candidate.getStartAt(), candidate.getEndAt()),
-                            "/flows/" + flow.getId()));
+                            "/flows/" + flow.getId(),
+                            buildParticipantColorClass(participantName)));
                 }
             }
         }
@@ -677,6 +697,13 @@ public class FlowService {
         if (participantId == null) {
             return List.of();
         }
+        return collectCalendarSourceEventsForParticipants(Set.of(participantId));
+    }
+
+    private List<CalendarSourceEvent> collectCalendarSourceEventsForParticipants(Set<Long> participantIds) {
+        if (participantIds == null || participantIds.isEmpty()) {
+            return List.of();
+        }
 
         List<Flow> flows = flowRepo.findAll();
         List<CalendarSourceEvent> events = new ArrayList<>();
@@ -688,7 +715,7 @@ public class FlowService {
 
             List<FlowStep> steps = withParticipantNames(stepRepo.findByFlowIdOrderByStepOrder(flow.getId()));
             for (FlowStep step : steps) {
-                if (!participantId.equals(step.getParticipantId())) {
+                if (!participantIds.contains(step.getParticipantId())) {
                     continue;
                 }
 
@@ -702,7 +729,8 @@ public class FlowService {
                             "CONFIRMED",
                             buildEventTitle(flow, participantName),
                             buildTooltip(flow, participantName, "CONFIRMED", step.getConfirmedStartAt(), step.getConfirmedEndAt()),
-                            "/flows/" + flow.getId()));
+                            "/flows/" + flow.getId(),
+                            buildParticipantColorClass(participantName)));
                 }
 
                 if (!"ACTIVE".equals(step.getStatus()) || step.getId() == null) {
@@ -722,7 +750,8 @@ public class FlowService {
                             candidate.getStatus(),
                             buildEventTitle(flow, participantName),
                             buildTooltip(flow, participantName, candidate.getStatus(), candidate.getStartAt(), candidate.getEndAt()),
-                            "/flows/" + flow.getId()));
+                            "/flows/" + flow.getId(),
+                            buildParticipantColorClass(participantName)));
                 }
             }
         }
@@ -857,7 +886,7 @@ public class FlowService {
                 formatTimeRange(event.startAt, event.endAt),
                 event.tooltip,
                 event.status,
-                toTypeClass(event.status),
+                toTypeClass(event.status, event.participantColorClass),
                 style,
                 event.detailUrl,
                 event.startAt.toString(),
@@ -870,7 +899,7 @@ public class FlowService {
                 formatTimeRange(event.startAt, event.endAt),
                 event.tooltip,
                 event.status,
-                toTypeClass(event.status),
+                toTypeClass(event.status, event.participantColorClass),
                 event.detailUrl);
     }
 
@@ -885,14 +914,25 @@ public class FlowService {
         return SCHEDULE_LABEL_FORMAT.format(startAt) + " ~ " + TIME_LABEL_FORMAT.format(endAt);
     }
 
-    private String toTypeClass(String status) {
+    private String toTypeClass(String status, String participantColorClass) {
+        String base;
         if ("CONFIRMED".equals(status)) {
-            return "calendar-event-confirmed";
+            base = "calendar-event-confirmed";
+        } else if ("SELECTED".equals(status)) {
+            base = "calendar-event-selected";
+        } else {
+            base = "calendar-event-proposed";
         }
-        if ("SELECTED".equals(status)) {
-            return "calendar-event-selected";
+        return base + " " + participantColorClass;
+    }
+
+    private String buildParticipantColorClass(String participantName) {
+        String key = participantName == null ? "" : participantName.trim();
+        if (key.isEmpty()) {
+            return "calendar-participant-1";
         }
-        return "calendar-event-proposed";
+        int bucket = Math.floorMod(key.hashCode(), 6) + 1;
+        return "calendar-participant-" + bucket;
     }
 
     private void assertNoOwnerTimeOverlap(Flow flow, LocalDateTime newStartAt, LocalDateTime newEndAt, Long excludeStepId) {
@@ -1008,6 +1048,7 @@ public class FlowService {
         private final String title;
         private final String tooltip;
         private final String detailUrl;
+        private final String participantColorClass;
 
         private CalendarSourceEvent(
                 LocalDateTime startAt,
@@ -1015,13 +1056,15 @@ public class FlowService {
                 String status,
                 String title,
                 String tooltip,
-                String detailUrl) {
+                String detailUrl,
+                String participantColorClass) {
             this.startAt = startAt;
             this.endAt = endAt;
             this.status = status;
             this.title = title;
             this.tooltip = tooltip;
             this.detailUrl = detailUrl;
+            this.participantColorClass = participantColorClass;
         }
     }
 

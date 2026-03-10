@@ -152,9 +152,7 @@ public class FlowController {
         var steps = flowService.getSteps(id);
         var activeOpt = flowService.findActiveStep(id);
         var candidates = activeOpt.map(step -> flowService.getCandidates(step.getId())).orElse(List.of());
-        Long currentUserId = resolveCurrentUserId(principal);
         LocalDate userCalendarCursor = parseDate(calendarCursor);
-        var userWeekCalendar = flowService.buildWeeklyCalendarViewForUser(currentUserId, userCalendarCursor);
 
         model.addAttribute("flow", flow);
         model.addAttribute("steps", steps);
@@ -165,12 +163,7 @@ public class FlowController {
         model.addAttribute("canManageFlow", flowAuthorization.canManageFlow(id, authentication));
         model.addAttribute("canOperateActiveStep", flowAuthorization.canOperateActiveStep(id, authentication));
         model.addAttribute("isAdmin", flowAuthorization.isAdmin(authentication));
-        model.addAttribute("userWeekCalendar", userWeekCalendar);
-        model.addAttribute("userWeekLabel", userWeekCalendar.getWeekLabel());
-        model.addAttribute("userWeekCurrentCursor", userWeekCalendar.getWeekStart());
-        model.addAttribute("userWeekPrevCursor", userWeekCalendar.getPrevWeekStart());
-        model.addAttribute("userWeekNextCursor", userWeekCalendar.getNextWeekStart());
-        model.addAttribute("userWeekTodayCursor", LocalDate.now().toString());
+        addFlowParticipantWeekCalendarModel(model, id, userCalendarCursor);
 
         return "flows/detail";
     }
@@ -183,14 +176,13 @@ public class FlowController {
             Model model,
             Principal principal) {
         var flow = flowService.getFlow(id);
-        Long currentUserId = resolveCurrentUserId(principal);
         LocalDate userCalendarCursor = parseDate(calendarCursor);
         model.addAttribute("flow", flow);
         model.addAttribute("steps", flowService.getSteps(id));
         model.addAttribute("userParticipants", loadUserParticipants());
         model.addAttribute("minDate", flowService.getReservableMinDate());
         model.addAttribute("maxDate", flowService.getReservableMaxDate());
-        addUserWeekCalendarModel(model, currentUserId, userCalendarCursor);
+        addFlowParticipantWeekCalendarModel(model, id, userCalendarCursor);
         return "flows/edit";
     }
 
@@ -381,8 +373,8 @@ public class FlowController {
                 .orElse(authentication.getName());
     }
 
-    private void addUserWeekCalendarModel(Model model, Long currentUserId, LocalDate cursor) {
-        var userWeekCalendar = flowService.buildWeeklyCalendarViewForUser(currentUserId, cursor);
+    private void addFlowParticipantWeekCalendarModel(Model model, Long flowId, LocalDate cursor) {
+        var userWeekCalendar = flowService.buildWeeklyCalendarViewForFlowParticipants(flowId, cursor);
         model.addAttribute("userWeekCalendar", userWeekCalendar);
         model.addAttribute("userWeekLabel", userWeekCalendar.getWeekLabel());
         model.addAttribute("userWeekCurrentCursor", userWeekCalendar.getWeekStart());
