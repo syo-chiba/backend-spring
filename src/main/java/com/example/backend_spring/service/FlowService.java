@@ -368,6 +368,7 @@ public class FlowService {
 
         LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
         assertNoOwnerTimeOverlap(flow, startAt, endAt, stepId);
+        assertNoParticipantTimeOverlap(step.getParticipantId(), startAt, endAt, stepId);
         step.confirm(startAt, endAt);
         stepRepo.save(step);
     }
@@ -395,6 +396,7 @@ public class FlowService {
 
         LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
         assertNoOwnerTimeOverlap(flow, startAt, endAt, stepId);
+        assertNoParticipantTimeOverlap(participant.getId(), startAt, endAt, stepId);
 
         step.reassignParticipant(participant.getId(), participant.getDisplayName());
         step.confirm(startAt, endAt);
@@ -440,12 +442,27 @@ public class FlowService {
     }
 
     public WeeklyCalendarView buildWeeklyCalendarView(List<Flow> flows, LocalDate cursorDate) {
+        List<CalendarSourceEvent> events = collectCalendarSourceEvents(flows);
+        return buildWeeklyCalendarViewFromEvents(events, cursorDate);
+    }
+
+    public WeeklyCalendarView buildWeeklyCalendarViewForUser(Long userId, LocalDate cursorDate) {
+        if (userId == null) {
+            return buildWeeklyCalendarViewFromEvents(List.of(), cursorDate);
+        }
+        Optional<Participant> participant = participantRepo.findByParticipantTypeAndUserId("USER", userId);
+        if (participant.isEmpty()) {
+            return buildWeeklyCalendarViewFromEvents(List.of(), cursorDate);
+        }
+        List<CalendarSourceEvent> events = collectCalendarSourceEventsForParticipant(participant.get().getId());
+        return buildWeeklyCalendarViewFromEvents(events, cursorDate);
+    }
+
+    private WeeklyCalendarView buildWeeklyCalendarViewFromEvents(List<CalendarSourceEvent> events, LocalDate cursorDate) {
         LocalDate baseDate = cursorDate == null ? LocalDate.now(clock) : cursorDate;
         LocalDate weekStart = baseDate.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         LocalDate weekEnd = weekStart.plusDays(6);
         LocalDate today = LocalDate.now(clock);
-
-        List<CalendarSourceEvent> events = collectCalendarSourceEvents(flows);
         List<WeeklyCalendarDay> days = new ArrayList<>(7);
 
         for (int i = 0; i < 7; i++) {
@@ -457,6 +474,7 @@ public class FlowService {
                     .collect(Collectors.toList());
 
             days.add(new WeeklyCalendarDay(
+                    day.toString(),
                     formatWeekDayLabel(day),
                     day.equals(today),
                     dayEvents));
@@ -527,6 +545,7 @@ public class FlowService {
         LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
 
         assertNoOwnerTimeOverlap(flow, startAt, endAt, null);
+        assertNoParticipantTimeOverlap(active.getParticipantId(), startAt, endAt, active.getId());
 
         StepCandidate created = candidateRepo.save(new StepCandidate(active.getId(), startAt, endAt));
         // New behavior: when a date/time is entered, it is fixed immediately.
@@ -544,6 +563,12 @@ public class FlowService {
         if (!candidate.getFlowStepId().equals(active.getId())) {
             throw new IllegalArgumentException("ACTIVE\u30b9\u30c6\u30c3\u30d7\u306e\u5019\u88dc\u3067\u306f\u3042\u308a\u307e\u305b\u3093\u3002candidateId=" + candidateId);
         }
+
+        assertNoParticipantTimeOverlap(
+                active.getParticipantId(),
+                candidate.getStartAt(),
+                candidate.getEndAt(),
+                active.getId());
 
         candidate.select();
         active.confirm(candidate.getStartAt(), candidate.getEndAt());
@@ -630,6 +655,66 @@ public class FlowService {
                     }
                     String participantName = resolveParticipantDisplayName(step, participantNameCache);
 
+                    events.add(new CalendarSourceEvent(
+                            candidate.getStartAt(),
+                            candidate.getEndAt(),
+                            candidate.getStatus(),
+                            buildEventTitle(flow, participantName),
+                            buildTooltip(flow, participantName, candidate.getStatus(), candidate.getStartAt(), candidate.getEndAt()),
+                            "/flows/" + flow.getId()));
+                }
+            }
+        }
+
+        return events.stream()
+                .sorted(Comparator.comparing((CalendarSourceEvent event) -> event.startAt)
+                        .thenComparing(event -> event.endAt))
+                .collect(Collectors.toList());
+    }
+
+    private List<CalendarSourceEvent> collectCalendarSourceEventsForParticipant(Long participantId) {
+        if (participantId == null) {
+            return List.of();
+        }
+
+        List<Flow> flows = flowRepo.findAll();
+        List<CalendarSourceEvent> events = new ArrayList<>();
+        Map<Long, String> participantNameCache = new HashMap<>();
+        for (Flow flow : flows) {
+            if (flow == null || flow.getId() == null) {
+                continue;
+            }
+
+            List<FlowStep> steps = withParticipantNames(stepRepo.findByFlowIdOrderByStepOrder(flow.getId()));
+            for (FlowStep step : steps) {
+                if (!participantId.equals(step.getParticipantId())) {
+                    continue;
+                }
+
+                if ("CONFIRMED".equals(step.getStatus())
+                        && step.getConfirmedStartAt() != null
+                        && step.getConfirmedEndAt() != null) {
+                    String participantName = resolveParticipantDisplayName(step, participantNameCache);
+                    events.add(new CalendarSourceEvent(
+                            step.getConfirmedStartAt(),
+                            step.getConfirmedEndAt(),
+                            "CONFIRMED",
+                            buildEventTitle(flow, participantName),
+                            buildTooltip(flow, participantName, "CONFIRMED", step.getConfirmedStartAt(), step.getConfirmedEndAt()),
+                            "/flows/" + flow.getId()));
+                }
+
+                if (!"ACTIVE".equals(step.getStatus()) || step.getId() == null) {
+                    continue;
+                }
+                List<StepCandidate> candidates = candidateRepo.findByFlowStepIdOrderByStartAtAsc(step.getId());
+                for (StepCandidate candidate : candidates) {
+                    if (!BLOCKING_CANDIDATE_STATUSES.contains(candidate.getStatus())
+                            || candidate.getStartAt() == null
+                            || candidate.getEndAt() == null) {
+                        continue;
+                    }
+                    String participantName = resolveParticipantDisplayName(step, participantNameCache);
                     events.add(new CalendarSourceEvent(
                             candidate.getStartAt(),
                             candidate.getEndAt(),
@@ -773,7 +858,9 @@ public class FlowService {
                 event.status,
                 toTypeClass(event.status),
                 style,
-                event.detailUrl);
+                event.detailUrl,
+                event.startAt.toString(),
+                event.endAt.toString());
     }
 
     private MonthlyCalendarEvent toMonthlyCalendarEvent(CalendarSourceEvent event) {
@@ -828,6 +915,43 @@ public class FlowService {
             var c = confirmedConflict.get();
             throw new IllegalArgumentException(
                     "\u78ba\u5b9a\u6e08\u307f\u6642\u9593\u304c\u91cd\u8907\u3057\u3066\u3044\u307e\u3059: \u30d5\u30ed\u30fc=" + c.getFlowTitle()
+                            + ", \u53c2\u52a0\u8005=" + c.getParticipantName()
+                            + ", \u65e2\u5b58=" + c.getStartAt() + " - " + c.getEndAt());
+        }
+    }
+
+    private void assertNoParticipantTimeOverlap(
+            Long participantId,
+            LocalDateTime newStartAt,
+            LocalDateTime newEndAt,
+            Long excludeStepId) {
+        if (participantId == null) {
+            return;
+        }
+
+        Long excludeFlowStepId = excludeStepId;
+        var candidateConflict = candidateRepo.findFirstTimeConflictForParticipant(
+                participantId,
+                excludeFlowStepId,
+                newStartAt,
+                newEndAt);
+        if (candidateConflict.isPresent()) {
+            var c = candidateConflict.get();
+            throw new IllegalArgumentException(
+                    "\u53c2\u52a0\u8005\u306e\u5019\u88dc\u6642\u9593\u304c\u91cd\u8907\u3057\u3066\u3044\u307e\u3059: \u30d5\u30ed\u30fc=" + c.getFlowTitle()
+                            + ", \u53c2\u52a0\u8005=" + c.getParticipantName()
+                            + ", \u65e2\u5b58=" + c.getStartAt() + " - " + c.getEndAt());
+        }
+
+        var confirmedConflict = stepRepo.findFirstConfirmedConflictForParticipant(
+                participantId,
+                excludeStepId,
+                newStartAt,
+                newEndAt);
+        if (confirmedConflict.isPresent()) {
+            var c = confirmedConflict.get();
+            throw new IllegalArgumentException(
+                    "\u53c2\u52a0\u8005\u306e\u78ba\u5b9a\u6e08\u307f\u6642\u9593\u304c\u91cd\u8907\u3057\u3066\u3044\u307e\u3059: \u30d5\u30ed\u30fc=" + c.getFlowTitle()
                             + ", \u53c2\u52a0\u8005=" + c.getParticipantName()
                             + ", \u65e2\u5b58=" + c.getStartAt() + " - " + c.getEndAt());
         }
@@ -922,14 +1046,20 @@ public class FlowService {
     }
 
     public static class WeeklyCalendarDay {
+        private final String isoDate;
         private final String label;
         private final boolean today;
         private final List<CalendarEvent> events;
 
-        public WeeklyCalendarDay(String label, boolean today, List<CalendarEvent> events) {
+        public WeeklyCalendarDay(String isoDate, String label, boolean today, List<CalendarEvent> events) {
+            this.isoDate = isoDate;
             this.label = label;
             this.today = today;
             this.events = events;
+        }
+
+        public String getIsoDate() {
+            return isoDate;
         }
 
         public String getLabel() {
@@ -953,6 +1083,8 @@ public class FlowService {
         private final String typeClass;
         private final String style;
         private final String detailUrl;
+        private final String startAtIso;
+        private final String endAtIso;
 
         public CalendarEvent(
                 String title,
@@ -961,7 +1093,9 @@ public class FlowService {
                 String status,
                 String typeClass,
                 String style,
-                String detailUrl) {
+                String detailUrl,
+                String startAtIso,
+                String endAtIso) {
             this.title = title;
             this.timeLabel = timeLabel;
             this.tooltip = tooltip;
@@ -969,6 +1103,8 @@ public class FlowService {
             this.typeClass = typeClass;
             this.style = style;
             this.detailUrl = detailUrl;
+            this.startAtIso = startAtIso;
+            this.endAtIso = endAtIso;
         }
 
         public String getTitle() {
@@ -997,6 +1133,14 @@ public class FlowService {
 
         public String getDetailUrl() {
             return detailUrl;
+        }
+
+        public String getStartAtIso() {
+            return startAtIso;
+        }
+
+        public String getEndAtIso() {
+            return endAtIso;
         }
     }
 
