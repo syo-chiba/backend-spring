@@ -37,21 +37,14 @@
       </div>
 
       <div class="row">
-        <label>参加者を追加（氏名入力）</label>
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <input id="participantSearchInput"
-                 type="text"
-                 list="participantCandidates"
-                 placeholder="例: Aさん"
-                 style="min-width:260px;" />
-          <button id="addParticipantStepButton" class="btn btn-secondary" type="button">ステップに追加</button>
-        </div>
-        <datalist id="participantCandidates">
-          <option th:each="p : ${userParticipants}"
-                  th:value="${p.displayName}"
-                  th:attr="data-id=${p.id}">候補</option>
-        </datalist>
+        <label>参加者を追加（前方一致検索）</label>
+        <input id="participantSearchInput"
+               type="text"
+               placeholder="例: Aさん"
+               style="max-width:320px;" />
         <small class="muted">同じ参加者を複数回追加できます（例: A→B→A→B）。</small>
+        <div id="participantSelectableList" class="participant-list" style="margin-top:8px;"></div>
+        <div id="participantNoMatch" class="muted" style="display:none; margin-top:8px;">一致する参加者がいません。</div>
       </div>
 
       <div class="row">
@@ -69,16 +62,20 @@
 <script th:inline="javascript">
   (function () {
     const participants = /*[[${userParticipants}]]*/ [];
-    const byName = new Map();
-    participants.forEach((p) => byName.set((p.displayName || '').trim(), p));
+    const normalizedParticipants = participants.map((p) => ({
+      id: p.id,
+      displayName: (p.displayName || '').trim(),
+      searchKey: (p.displayName || '').trim().toLowerCase()
+    }));
 
     const form = document.getElementById('createFlowForm');
     const searchInput = document.getElementById('participantSearchInput');
-    const addButton = document.getElementById('addParticipantStepButton');
+    const selectableList = document.getElementById('participantSelectableList');
+    const noMatch = document.getElementById('participantNoMatch');
     const stepOrderList = document.getElementById('stepOrderList');
     const emptyLabel = document.getElementById('stepOrderEmpty');
     const hiddenInputs = document.getElementById('participantHiddenInputs');
-    if (!form || !searchInput || !addButton || !stepOrderList || !emptyLabel || !hiddenInputs) {
+    if (!form || !searchInput || !selectableList || !noMatch || !stepOrderList || !emptyLabel || !hiddenInputs) {
       return;
     }
 
@@ -116,28 +113,34 @@
       });
     }
 
-    function addCurrentInput() {
-      const name = (searchInput.value || '').trim();
-      if (!name) {
-        return;
-      }
-      const participant = byName.get(name);
-      if (!participant) {
-        alert('候補一覧にある氏名を選択してください。');
-        return;
-      }
+    function addParticipant(participant) {
       selectedSteps.push({ id: participant.id, displayName: participant.displayName });
-      searchInput.value = '';
       render();
     }
 
-    addButton.addEventListener('click', addCurrentInput);
-    searchInput.addEventListener('keydown', function (event) {
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        addCurrentInput();
-      }
-    });
+    function renderSelectableList() {
+      const keyword = (searchInput.value || '').trim().toLowerCase();
+      const candidates = keyword
+        ? normalizedParticipants.filter((p) => p.searchKey.startsWith(keyword))
+        : normalizedParticipants;
+
+      selectableList.innerHTML = '';
+      noMatch.style.display = candidates.length === 0 ? 'block' : 'none';
+
+      candidates.forEach((p) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'participant-option';
+        btn.style.cursor = 'pointer';
+        btn.textContent = p.displayName;
+        btn.addEventListener('click', function () {
+          addParticipant(p);
+        });
+        selectableList.appendChild(btn);
+      });
+    }
+
+    searchInput.addEventListener('input', renderSelectableList);
 
     form.addEventListener('submit', function (event) {
       if (selectedSteps.length === 0) {
@@ -145,6 +148,8 @@
         alert('参加者を1つ以上追加してください。');
       }
     });
+
+    renderSelectableList();
   })();
 </script>
 </body>

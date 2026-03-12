@@ -26,7 +26,20 @@
 
   <section class="card" style="margin-bottom:16px;">
     <p>ユーザー名: <b th:text="${user.username}">user</b></p>
+    <p>表示名: <b th:text="${currentDisplayName}">表示名</b></p>
     <p>状態: <span class="badge" th:text="${user.enabled ? 'ENABLED' : 'DISABLED'}">ENABLED</span></p>
+  </section>
+
+  <section class="card" style="margin-bottom:16px;">
+    <h2>表示名変更</h2>
+    <form method="post" th:action="@{/users/me/display-name}">
+      <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+      <div class="row">
+        <label>表示名（100文字以内）</label>
+        <input type="text" name="displayName" required maxlength="100" th:value="${currentDisplayName}" />
+      </div>
+      <button class="btn btn-primary" type="submit">更新</button>
+    </form>
   </section>
 
   <section class="card">

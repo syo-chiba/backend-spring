@@ -354,6 +354,13 @@ th { background: #f8fafc; }
   color: #1d4ed8;
 }
 
+.calendar-participant-1 { border-left: 4px solid #ef4444; }
+.calendar-participant-2 { border-left: 4px solid #f59e0b; }
+.calendar-participant-3 { border-left: 4px solid #10b981; }
+.calendar-participant-4 { border-left: 4px solid #3b82f6; }
+.calendar-participant-5 { border-left: 4px solid #8b5cf6; }
+.calendar-participant-6 { border-left: 4px solid #ec4899; }
+
 .month-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(120px, 1fr));
