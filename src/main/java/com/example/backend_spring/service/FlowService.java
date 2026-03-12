@@ -5,6 +5,7 @@ import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.temporal.TemporalAdjusters;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -38,6 +39,7 @@ import com.example.backend_spring.repository.StepCandidateRepository;
 public class FlowService {
 
     private static final List<String> BLOCKING_CANDIDATE_STATUSES = List.of("PROPOSED", "SELECTED");
+    private static final int ALL_WEEKDAYS_MASK = 127;
     private static final List<String> WEEKDAY_HEADERS = List.of("\u65E5", "\u6708", "\u706B", "\u6C34", "\u6728", "\u91D1", "\u571F");
     private static final DateTimeFormatter TIME_LABEL_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_LABEL_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd");
@@ -353,6 +355,7 @@ public class FlowService {
 
         assertAfterPreviousStep(flowId, step.getStepOrder(), startAt, "面談設定日時");
         LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
+        assertWithinStepReservableWindow(step, startAt, endAt, "面談設定日時");
         assertNoOwnerTimeOverlap(flow, startAt, endAt, stepId);
         assertNoParticipantTimeOverlap(step.getParticipantId(), startAt, endAt, stepId);
         step.confirm(startAt, endAt);
@@ -382,6 +385,7 @@ public class FlowService {
 
         assertAfterPreviousStep(flowId, step.getStepOrder(), startAt, "面談設定日時");
         LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
+        assertWithinStepReservableWindow(step, startAt, endAt, "面談設定日時");
         assertNoOwnerTimeOverlap(flow, startAt, endAt, stepId);
         assertNoParticipantTimeOverlap(participant.getId(), startAt, endAt, stepId);
 
@@ -549,6 +553,7 @@ public class FlowService {
 
         LocalDateTime endAt = startAt.plusMinutes(flow.getDurationMinutes());
 
+        assertWithinStepReservableWindow(active, startAt, endAt, "候補日時");
         assertNoOwnerTimeOverlap(flow, startAt, endAt, null);
         assertNoParticipantTimeOverlap(active.getParticipantId(), startAt, endAt, active.getId());
 
@@ -574,6 +579,7 @@ public class FlowService {
                 candidate.getStartAt(),
                 candidate.getEndAt(),
                 active.getId());
+        assertWithinStepReservableWindow(active, candidate.getStartAt(), candidate.getEndAt(), "候補日時");
 
         candidate.select();
         active.confirm(candidate.getStartAt(), candidate.getEndAt());
@@ -1039,6 +1045,71 @@ public class FlowService {
         if (target.isBefore(minDate) || target.isAfter(maxDate)) {
             throw new IllegalArgumentException(label + "\u306f\u7fcc\u65e5\u304b\u30893\u30f6\u6708\u4ee5\u5185\u3067\u6307\u5b9a\u3057\u3066\u304f\u3060\u3055\u3044\u3002value=" + dateTime);
         }
+    }
+
+    private void assertWithinStepReservableWindow(
+            FlowStep step,
+            LocalDateTime startAt,
+            LocalDateTime endAt,
+            String label) {
+        if (step == null || startAt == null || endAt == null) {
+            return;
+        }
+
+        LocalDate targetDate = startAt.toLocalDate();
+        if (step.getReservableFromDate() != null && targetDate.isBefore(step.getReservableFromDate())) {
+            throw new IllegalArgumentException(label + " is before step reservable start date. value=" + startAt);
+        }
+        if (step.getReservableToDate() != null && targetDate.isAfter(step.getReservableToDate())) {
+            throw new IllegalArgumentException(label + " is after step reservable end date. value=" + startAt);
+        }
+
+        int weekdayMask = step.getAllowedWeekdaysMask();
+        if (weekdayMask <= 0 || weekdayMask > ALL_WEEKDAYS_MASK) {
+            throw new IllegalArgumentException("Invalid step weekday mask. stepId=" + step.getId() + ", mask=" + weekdayMask);
+        }
+        int dayBit = 1 << (startAt.getDayOfWeek().getValue() % 7);
+        if ((weekdayMask & dayBit) == 0) {
+            throw new IllegalArgumentException(label + " is not allowed on this weekday. value=" + startAt);
+        }
+
+        int allowedStartMinute = step.getAllowedStartMinute();
+        int allowedEndMinute = step.getAllowedEndMinute();
+        if (allowedStartMinute < 0 || allowedStartMinute > 1439 || allowedEndMinute < 1 || allowedEndMinute > 1440
+                || allowedStartMinute >= allowedEndMinute) {
+            throw new IllegalArgumentException(
+                    "Invalid step time window. stepId=" + step.getId()
+                            + ", startMinute=" + allowedStartMinute
+                            + ", endMinute=" + allowedEndMinute);
+        }
+
+        int startMinute = startAt.getHour() * 60 + startAt.getMinute();
+        int endMinuteExclusive;
+        if (startAt.toLocalDate().equals(endAt.toLocalDate())) {
+            endMinuteExclusive = endAt.getHour() * 60 + endAt.getMinute();
+            if (endAt.toLocalTime().equals(LocalTime.MIDNIGHT)) {
+                endMinuteExclusive = 1440;
+            }
+        } else {
+            // Cross-day meetings cannot fit into a step day-time window.
+            endMinuteExclusive = 1441;
+        }
+
+        if (startMinute < allowedStartMinute || endMinuteExclusive > allowedEndMinute) {
+            throw new IllegalArgumentException(
+                    label + " is outside step reservable time window. value=" + startAt
+                            + ", allowed=" + minuteLabel(allowedStartMinute) + "-" + minuteLabel(allowedEndMinute));
+        }
+    }
+
+    private String minuteLabel(int minute) {
+        int normalized = Math.max(0, Math.min(1440, minute));
+        int hour = normalized / 60;
+        int min = normalized % 60;
+        if (hour == 24 && min == 0) {
+            return "24:00";
+        }
+        return String.format(Locale.ROOT, "%02d:%02d", hour, min);
     }
 
     private static class CalendarSourceEvent {
