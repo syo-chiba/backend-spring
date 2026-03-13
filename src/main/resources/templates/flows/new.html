@@ -10,7 +10,7 @@
   <div class="top-bar">
     <div>
       <h1>フロー新規作成</h1>
-      <p class="muted">氏名で候補を検索し、ステップ順に参加者を追加してください。</p>
+      <p class="muted">参加者を検索して追加し、ステップごとの予約制約を設定してください。</p>
     </div>
     <div style="display:flex; gap:8px;">
       <form method="post" action="/logout" style="margin:0;">
@@ -37,18 +37,15 @@
       </div>
 
       <div class="row">
-        <label>参加者を追加（前方一致検索）</label>
-        <input id="participantSearchInput"
-               type="text"
-               placeholder="例: Aさん"
-               style="max-width:320px;" />
-        <small class="muted">同じ参加者を複数回追加できます（例: A→B→A→B）。</small>
+        <label>参加者を追加（氏名入力で候補表示）</label>
+        <input id="participantSearchInput" type="text" placeholder="例: Aさん" style="max-width:320px;" />
+        <small class="muted">同じ参加者を複数回追加できます。</small>
         <div id="participantSelectableList" class="participant-list" style="margin-top:8px;"></div>
         <div id="participantNoMatch" class="muted" style="display:none; margin-top:8px;">一致する参加者がいません。</div>
       </div>
 
       <div class="row">
-        <label>ステップ順</label>
+        <label>ステップ一覧（制約設定）</label>
         <div id="stepOrderList" class="participant-list"></div>
         <div id="stepOrderEmpty" class="muted">まだ参加者が追加されていません。</div>
         <div id="participantHiddenInputs"></div>
@@ -62,6 +59,7 @@
 <script th:inline="javascript">
   (function () {
     const participants = /*[[${userParticipants}]]*/ [];
+    const minDate = /*[[${minDate}]]*/ '';
     const normalizedParticipants = participants.map((p) => ({
       id: p.id,
       displayName: (p.displayName || '').trim(),
@@ -80,19 +78,63 @@
     }
 
     const selectedSteps = [];
+    const weekdays = [
+      { bit: 1, label: '日' },
+      { bit: 2, label: '月' },
+      { bit: 4, label: '火' },
+      { bit: 8, label: '水' },
+      { bit: 16, label: '木' },
+      { bit: 32, label: '金' },
+      { bit: 64, label: '土' }
+    ];
+
+    function maskToCheckedDays(mask) {
+      const value = Number.isFinite(Number(mask)) ? Number(mask) : 127;
+      return weekdays.filter((d) => (value & d.bit) !== 0).map((d) => d.bit);
+    }
+
+    function checkedDaysToMask(bits) {
+      return bits.reduce((acc, bit) => acc | bit, 0);
+    }
+
+    function appendHidden(name, value) {
+      const hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = name;
+      hidden.value = String(value ?? '');
+      hiddenInputs.appendChild(hidden);
+    }
+
+    function syncHiddenInputs() {
+      hiddenInputs.innerHTML = '';
+      selectedSteps.forEach((step) => {
+        appendHidden('participantUserIds', step.id);
+        appendHidden('stepParticipantIds', step.id);
+        appendHidden('stepReservableFromDates', step.fromDate || '');
+        appendHidden('stepReservableToDates', step.toDate || '');
+        appendHidden('stepAllowedWeekdayMasks', step.weekdayMask == null ? 127 : step.weekdayMask);
+        appendHidden('stepAllowedStartMinutes', step.startMinute == null ? 0 : step.startMinute);
+        appendHidden('stepAllowedEndMinutes', step.endMinute == null ? 1440 : step.endMinute);
+      });
+    }
 
     function render() {
       stepOrderList.innerHTML = '';
-      hiddenInputs.innerHTML = '';
       emptyLabel.style.display = selectedSteps.length === 0 ? 'block' : 'none';
 
       selectedSteps.forEach((step, idx) => {
-        const chip = document.createElement('div');
-        chip.className = 'participant-option';
-        chip.style.display = 'inline-flex';
-        chip.style.alignItems = 'center';
-        chip.style.gap = '8px';
-        chip.innerHTML = '<b>#' + (idx + 1) + '</b> <span>' + step.displayName + '</span>';
+        const card = document.createElement('div');
+        card.className = 'participant-option';
+        card.style.display = 'block';
+        card.style.padding = '10px';
+        card.style.marginBottom = '8px';
+
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.style.gap = '8px';
+        header.style.marginBottom = '8px';
+        header.innerHTML = '<b>#' + (idx + 1) + '</b> <span>' + step.displayName + '</span>';
 
         const removeBtn = document.createElement('button');
         removeBtn.type = 'button';
@@ -102,19 +144,74 @@
           selectedSteps.splice(idx, 1);
           render();
         });
-        chip.appendChild(removeBtn);
-        stepOrderList.appendChild(chip);
+        header.appendChild(removeBtn);
+        card.appendChild(header);
 
-        const hidden = document.createElement('input');
-        hidden.type = 'hidden';
-        hidden.name = 'participantUserIds';
-        hidden.value = String(step.id);
-        hiddenInputs.appendChild(hidden);
+        const grid = document.createElement('div');
+        grid.className = 'grid-2';
+        grid.innerHTML =
+          '<div class="row"><label>予約可能開始日</label><input type="date" data-key="fromDate" /></div>' +
+          '<div class="row"><label>予約可能終了日</label><input type="date" data-key="toDate" /></div>' +
+          '<div class="row"><label>予約曜日</label><div data-weekday-wrap style="display:flex; gap:8px; flex-wrap:wrap;"></div></div>' +
+          '<div class="row"><label>開始分(0-1439)</label><input type="number" min="0" max="1439" data-key="startMinute" /></div>' +
+          '<div class="row"><label>終了分(1-1440)</label><input type="number" min="1" max="1440" data-key="endMinute" /></div>';
+        card.appendChild(grid);
+
+        grid.querySelectorAll('input[type="date"]').forEach((input) => {
+          input.setAttribute('min', minDate);
+        });
+        grid.querySelectorAll('input[data-key]').forEach((input) => {
+          const key = input.getAttribute('data-key');
+          input.value = step[key] == null ? '' : String(step[key]);
+          input.addEventListener('input', function () {
+            if (key === 'startMinute' || key === 'endMinute') {
+              step[key] = input.value === '' ? null : Number(input.value);
+            } else {
+              step[key] = input.value;
+            }
+            syncHiddenInputs();
+          });
+        });
+
+        const weekdayWrap = grid.querySelector('[data-weekday-wrap]');
+        if (weekdayWrap) {
+          const selectedBits = new Set(maskToCheckedDays(step.weekdayMask));
+          weekdays.forEach((day) => {
+            const label = document.createElement('label');
+            label.style.display = 'inline-flex';
+            label.style.alignItems = 'center';
+            label.style.gap = '4px';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.value = String(day.bit);
+            checkbox.checked = selectedBits.has(day.bit);
+            checkbox.addEventListener('change', function () {
+              const checked = Array.from(weekdayWrap.querySelectorAll('input[type="checkbox"]:checked'))
+                .map((el) => Number(el.value));
+              step.weekdayMask = checkedDaysToMask(checked);
+              syncHiddenInputs();
+            });
+            label.appendChild(checkbox);
+            label.appendChild(document.createTextNode(day.label));
+            weekdayWrap.appendChild(label);
+          });
+        }
+        stepOrderList.appendChild(card);
       });
+      syncHiddenInputs();
     }
 
     function addParticipant(participant) {
-      selectedSteps.push({ id: participant.id, displayName: participant.displayName });
+      const previous = selectedSteps.length > 0 ? selectedSteps[selectedSteps.length - 1] : null;
+      selectedSteps.push({
+        id: participant.id,
+        displayName: participant.displayName,
+        fromDate: previous ? previous.fromDate : '',
+        toDate: previous ? previous.toDate : '',
+        weekdayMask: previous ? previous.weekdayMask : 127,
+        startMinute: previous ? previous.startMinute : 0,
+        endMinute: previous ? previous.endMinute : 1440
+      });
       render();
     }
 
@@ -143,9 +240,42 @@
     searchInput.addEventListener('input', renderSelectableList);
 
     form.addEventListener('submit', function (event) {
+      syncHiddenInputs();
       if (selectedSteps.length === 0) {
         event.preventDefault();
         alert('参加者を1つ以上追加してください。');
+        return;
+      }
+
+      for (const step of selectedSteps) {
+        const mask = Number(step.weekdayMask);
+        const startMinute = Number(step.startMinute);
+        const endMinute = Number(step.endMinute);
+        if (!Number.isFinite(mask) || mask < 1 || mask > 127) {
+          event.preventDefault();
+          alert('予約曜日を1つ以上選択してください。');
+          return;
+        }
+        if (!Number.isFinite(startMinute) || startMinute < 0 || startMinute > 1439) {
+          event.preventDefault();
+          alert('開始分は0-1439で入力してください。');
+          return;
+        }
+        if (!Number.isFinite(endMinute) || endMinute < 1 || endMinute > 1440) {
+          event.preventDefault();
+          alert('終了分は1-1440で入力してください。');
+          return;
+        }
+        if (startMinute >= endMinute) {
+          event.preventDefault();
+          alert('開始分は終了分より前にしてください。');
+          return;
+        }
+        if (step.fromDate && step.toDate && step.fromDate > step.toDate) {
+          event.preventDefault();
+          alert('予約可能開始日は終了日以前にしてください。');
+          return;
+        }
       }
     });
 

@@ -32,7 +32,7 @@
         <input id="editFlowTitleInput" name="title" required th:value="${flow.title}" />
       </div>
       <div class="row">
-        <label>所要時間（分）</label>
+        <label>面談時間(分)</label>
         <input type="number" min="1" max="720" name="durationMinutes" required th:value="${flow.durationMinutes}" />
       </div>
       <div class="row">
@@ -44,31 +44,90 @@
   </section>
 
   <section class="card" style="margin-bottom:16px;">
+    <h2>ステップ予約制約</h2>
+    <p class="muted">各ステップの予約可能期間・曜日マスク・時間範囲(分)を設定できます。</p>
+    <form method="post" th:action="@{'/flows/' + ${flow.id} + '/steps'}" style="margin-bottom:12px;">
+      <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+      <div class="row">
+        <label>ステップ追加（前ステップ設定を初期値コピー）</label>
+        <select name="participantId" required>
+          <option value="">参加者を選択</option>
+          <option th:each="p : ${userParticipants}" th:value="${p.id}" th:text="${p.displayName}">user</option>
+        </select>
+        <button class="btn btn-secondary" type="submit">ステップ追加</button>
+      </div>
+    </form>
+    <div th:if="${#lists.isEmpty(steps)}" class="muted">ステップがありません。</div>
+
+    <div th:each="step : ${steps}" class="participant-option" style="display:block; padding:10px; margin-bottom:8px;">
+      <form class="step-constraint-form" method="post" th:action="@{|/flows/${flow.id}/steps/${step.id}/constraints|}">
+        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+        <div style="margin-bottom:8px;">
+          <b th:text="|#${step.stepOrder}|">#1</b>
+          <span th:text="${step.participantName}">Aさん</span>
+        </div>
+        <div class="grid-2">
+          <div class="row">
+            <label>予約可能開始日</label>
+            <input type="date" name="reservableFromDate" th:value="${step.reservableFromDate}" th:attr="min=${minDate},max=${maxDate}" />
+          </div>
+          <div class="row">
+            <label>予約可能終了日</label>
+            <input type="date" name="reservableToDate" th:value="${step.reservableToDate}" th:attr="min=${minDate},max=${maxDate}" />
+          </div>
+          <div class="row">
+            <label>予約曜日</label>
+            <input type="hidden" name="allowedWeekdaysMask" class="weekday-mask-input" th:value="${step.allowedWeekdaysMask}" />
+            <div class="weekday-picker" th:attr="data-mask=${step.allowedWeekdaysMask}" style="display:flex; gap:8px; flex-wrap:wrap;">
+              <label style="display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" class="weekday-checkbox" data-bit="1" />日</label>
+              <label style="display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" class="weekday-checkbox" data-bit="2" />月</label>
+              <label style="display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" class="weekday-checkbox" data-bit="4" />火</label>
+              <label style="display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" class="weekday-checkbox" data-bit="8" />水</label>
+              <label style="display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" class="weekday-checkbox" data-bit="16" />木</label>
+              <label style="display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" class="weekday-checkbox" data-bit="32" />金</label>
+              <label style="display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" class="weekday-checkbox" data-bit="64" />土</label>
+            </div>
+          </div>
+          <div class="row">
+            <label>開始分(0-1439)</label>
+            <input type="number" min="0" max="1439" name="allowedStartMinute" th:value="${step.allowedStartMinute}" />
+          </div>
+          <div class="row">
+            <label>終了分(1-1440)</label>
+            <input type="number" min="1" max="1440" name="allowedEndMinute" th:value="${step.allowedEndMinute}" />
+          </div>
+        </div>
+        <button class="btn btn-secondary" type="submit">制約を更新</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="card" style="margin-bottom:16px;">
     <div class="calendar-head">
       <div>
-        <h2>関係者の予定（週）</h2>
+        <h2>関係者の週カレンダー</h2>
         <p class="muted" th:text="${userWeekLabel}">2026/03/09 - 2026/03/15</p>
       </div>
       <div class="calendar-nav">
         <a class="btn btn-secondary" th:href="@{'/flows/' + ${flow.id} + '/edit'(calendarCursor=${userWeekPrevCursor})}">前へ</a>
-        <a class="btn btn-secondary" th:href="@{'/flows/' + ${flow.id} + '/edit'(calendarCursor=${userWeekTodayCursor})}">今週</a>
+        <a class="btn btn-secondary" th:href="@{'/flows/' + ${flow.id} + '/edit'(calendarCursor=${userWeekTodayCursor})}">今日</a>
         <a class="btn btn-secondary" th:href="@{'/flows/' + ${flow.id} + '/edit'(calendarCursor=${userWeekNextCursor})}">次へ</a>
       </div>
     </div>
 
     <div class="row" th:if="${!#lists.isEmpty(steps)}">
-      <label>確定対象ステップ</label>
+      <label>予約対象ステップ</label>
       <select id="calendarTargetStepId">
         <option th:each="s : ${steps}"
                 th:value="${s.id}"
                 th:attr="data-participant-id=${s.participantId}"
                 th:text="|#${s.stepOrder} ${s.participantName}|">#1 Aさん</option>
       </select>
-      <small class="muted">クリックした日時を選択ステップに対してそのまま確定します。</small>
+      <small class="muted">クリックした日時で候補を確定し、そのまま予約します。</small>
     </div>
 
     <div class="calendar-grid">
-      <div class="calendar-corner">時刻</div>
+      <div class="calendar-corner">時間</div>
       <div class="calendar-day-head"
            th:each="day : ${userWeekCalendar.days}"
            th:classappend="${day.today} ? ' calendar-day-head-today' : ''"
@@ -91,12 +150,12 @@
            th:attr="data-start=${event.startAtIso},data-end=${event.endAtIso}"
            th:title="${event.tooltip}"
            th:href="${event.detailUrl}">
-          <div class="calendar-event-title" th:text="${event.title}">#20 k k / 千葉</div>
+          <div class="calendar-event-title" th:text="${event.title}">#20 タイトル / 参加者</div>
           <div class="calendar-event-time" th:text="${event.timeLabel}">09:30 - 10:30</div>
         </a>
       </div>
     </div>
-    <p class="muted" style="margin-top:8px;">空き枠をクリックするとモーダルで確認後、そのまま確定します。赤プレビューは重複です。</p>
+    <p class="muted" style="margin-top:8px;">空き枠をクリックするとモーダルで予約確定できます。赤表示は重複候補です。</p>
   </section>
 </main>
 
@@ -110,8 +169,8 @@
 <div id="editSlotConfirmModal" class="slot-modal" aria-hidden="true">
   <div class="slot-modal-backdrop" data-close-edit-slot-modal></div>
   <div class="slot-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="editSlotConfirmTitle">
-    <h3 id="editSlotConfirmTitle">この内容で確定しますか？</h3>
-    <p id="editSlotConfirmMessage" class="muted">OKで確定します。</p>
+    <h3 id="editSlotConfirmTitle">この内容で予約しますか？</h3>
+    <p id="editSlotConfirmMessage" class="muted">OKで予約します。</p>
     <div class="row">
       <label for="editSlotTitleInput">タイトル</label>
       <input id="editSlotTitleInput" type="text" />
@@ -122,16 +181,16 @@
         <input id="editSlotDateInput" type="date" th:attr="min=${minDate},max=${maxDate}" />
       </div>
       <div class="row">
-        <label for="editSlotTimeSelect">時刻</label>
+        <label for="editSlotTimeSelect">時間</label>
         <select id="editSlotTimeSelect">
           <option th:each="i : ${#numbers.sequence(0,47)}"
                   th:value="${T(java.lang.String).format('%02d:%02d', i / 2, (i % 2) * 30)}"
-                  th:text="|${i / 2}時${(i % 2) == 0 ? '00' : '30'}分|">9時00分</option>
+                  th:text="${T(java.lang.String).format('%d:%02d', i / 2, (i % 2) * 30)}">9:30</option>
         </select>
       </div>
     </div>
     <div class="row">
-      <label for="editSlotParticipantSelect">参加ユーザー</label>
+      <label for="editSlotParticipantSelect">参加者</label>
       <select id="editSlotParticipantSelect">
         <option th:each="p : ${userParticipants}" th:value="${p.id}" th:text="${p.displayName}">user</option>
       </select>
@@ -143,6 +202,51 @@
     </div>
   </div>
 </div>
+
+<script>
+  (function () {
+    function recalcMask(form) {
+      const hidden = form.querySelector('.weekday-mask-input');
+      const checkboxes = form.querySelectorAll('.weekday-checkbox');
+      if (!hidden || checkboxes.length === 0) {
+        return;
+      }
+      let mask = 0;
+      checkboxes.forEach((cb) => {
+        if (cb.checked) {
+          mask |= Number(cb.getAttribute('data-bit') || '0');
+        }
+      });
+      hidden.value = String(mask);
+    }
+
+    document.querySelectorAll('.step-constraint-form').forEach((form) => {
+      const picker = form.querySelector('.weekday-picker');
+      const checkboxes = form.querySelectorAll('.weekday-checkbox');
+      const baseMask = Number((picker && picker.getAttribute('data-mask')) || '127');
+      checkboxes.forEach((cb) => {
+        const bit = Number(cb.getAttribute('data-bit') || '0');
+        cb.checked = (baseMask & bit) !== 0;
+        cb.addEventListener('change', function () {
+          recalcMask(form);
+        });
+      });
+      recalcMask(form);
+      form.addEventListener('submit', function (event) {
+        recalcMask(form);
+        const hidden = form.querySelector('.weekday-mask-input');
+        if (!hidden) {
+          return;
+        }
+        const value = Number(hidden.value);
+        if (!Number.isFinite(value) || value < 1 || value > 127) {
+          event.preventDefault();
+          alert('曜日を1つ以上選択してください。');
+        }
+      });
+    });
+  })();
+</script>
 
 <script th:inline="javascript">
   (function () {
@@ -240,11 +344,11 @@
       const time = modalTimeSelect.value;
       const overlap = computeOverlap(date, time);
       const endTime = toTimeText(Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5)) + durationMinutes);
-      modalMessage.textContent = '#' + pendingSelection.stepId + ' を ' + date + ' ' + time + ' - ' + endTime + ' で確定します。よろしいですか？';
+      modalMessage.textContent = '#' + pendingSelection.stepId + ' / ' + date + ' ' + time + ' - ' + endTime + ' で予約しますか？';
       if (overlap) {
         confirmOk.disabled = true;
         modalError.style.display = 'block';
-        modalError.textContent = 'この時間帯は既存予定と重複しています。別の時間を選択してください。';
+        modalError.textContent = 'この時間帯は既存予約と重複しています。';
       } else {
         confirmOk.disabled = false;
         modalError.style.display = 'none';
