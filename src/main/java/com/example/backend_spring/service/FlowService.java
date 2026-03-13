@@ -82,6 +82,37 @@ public class FlowService {
         this(flowRepo, stepRepo, null, null, candidateRepo, participantRepo, clock);
     }
 
+    public static class StepCreationSpec {
+        private final Long participantId;
+        private final LocalDate reservableFromDate;
+        private final LocalDate reservableToDate;
+        private final Integer allowedWeekdaysMask;
+        private final Integer allowedStartMinute;
+        private final Integer allowedEndMinute;
+
+        public StepCreationSpec(
+                Long participantId,
+                LocalDate reservableFromDate,
+                LocalDate reservableToDate,
+                Integer allowedWeekdaysMask,
+                Integer allowedStartMinute,
+                Integer allowedEndMinute) {
+            this.participantId = participantId;
+            this.reservableFromDate = reservableFromDate;
+            this.reservableToDate = reservableToDate;
+            this.allowedWeekdaysMask = allowedWeekdaysMask;
+            this.allowedStartMinute = allowedStartMinute;
+            this.allowedEndMinute = allowedEndMinute;
+        }
+
+        public Long getParticipantId() { return participantId; }
+        public LocalDate getReservableFromDate() { return reservableFromDate; }
+        public LocalDate getReservableToDate() { return reservableToDate; }
+        public Integer getAllowedWeekdaysMask() { return allowedWeekdaysMask; }
+        public Integer getAllowedStartMinute() { return allowedStartMinute; }
+        public Integer getAllowedEndMinute() { return allowedEndMinute; }
+    }
+
     @Transactional
     public Long createFlow(String title, int durationMinutes, LocalDateTime startFrom, Long createdByUserId, List<String> participants) {
         return createFlow(title, durationMinutes, startFrom, createdByUserId, List.of(), participants);
@@ -137,6 +168,58 @@ public class FlowService {
     }
 
     @Transactional
+    public Long createFlowWithStepSpecs(
+            String title,
+            int durationMinutes,
+            LocalDateTime startFrom,
+            Long createdByUserId,
+            List<StepCreationSpec> stepSpecs,
+            List<String> externalParticipants) {
+        validateReservableDateTime(startFrom, "\u8abf\u6574\u958b\u59cb\u65e5\u6642");
+
+        if (stepSpecs == null || stepSpecs.isEmpty()) {
+            throw new IllegalArgumentException("参加者を1名以上追加してください。");
+        }
+
+        Flow flow = new Flow(title, durationMinutes, startFrom, createdByUserId);
+        Flow saved = flowRepo.save(flow);
+
+        List<FlowStep> steps = new ArrayList<>();
+        int order = 1;
+        for (StepCreationSpec rawSpec : stepSpecs) {
+            StepCreationSpec spec = normalizeStepCreationSpec(rawSpec);
+            Participant participant = participantRepo.findById(spec.getParticipantId())
+                    .orElseThrow(() -> new IllegalArgumentException("参加者が見つかりません。participantId=" + spec.getParticipantId()));
+
+            if (!"USER".equals(participant.getParticipantType())) {
+                throw new IllegalArgumentException("参加者として設定できない種別です。participantId=" + spec.getParticipantId());
+            }
+
+            FlowStep step = new FlowStep(saved.getId(), order, participant.getId(), participant.getDisplayName());
+            step.updateReservableConstraints(
+                    spec.getReservableFromDate(),
+                    spec.getReservableToDate(),
+                    spec.getAllowedWeekdaysMask(),
+                    spec.getAllowedStartMinute(),
+                    spec.getAllowedEndMinute());
+            if (order == 1) {
+                step.activate();
+            }
+            steps.add(step);
+            order++;
+        }
+
+        if (steps.isEmpty()) {
+            throw new IllegalArgumentException("参加者が1人もいません。");
+        }
+
+        saved.ensureStepCycleSize(steps.size());
+        flowRepo.save(saved);
+        stepRepo.saveAll(steps);
+        return saved.getId();
+    }
+
+    @Transactional
     public void reassignStepParticipant(Long flowId, Long stepId, Long participantId) {
         FlowStep step = stepRepo.findById(stepId)
                 .orElseThrow(() -> new IllegalArgumentException("ステップが見つかりません。stepId=" + stepId));
@@ -152,6 +235,65 @@ public class FlowService {
 
         step.reassignParticipant(participant.getId(), participant.getDisplayName());
         stepRepo.save(step);
+    }
+
+    @Transactional
+    public void updateStepReservableConstraints(
+            Long flowId,
+            Long stepId,
+            LocalDate reservableFromDate,
+            LocalDate reservableToDate,
+            Integer allowedWeekdaysMask,
+            Integer allowedStartMinute,
+            Integer allowedEndMinute) {
+        FlowStep step = stepRepo.findById(stepId)
+                .orElseThrow(() -> new IllegalArgumentException("ステップが見つかりません。stepId=" + stepId));
+        if (!step.getFlowId().equals(flowId)) {
+            throw new IllegalArgumentException("指定されたフローのステップではありません。");
+        }
+
+        StepCreationSpec normalized = normalizeStepCreationSpec(new StepCreationSpec(
+                step.getParticipantId(),
+                reservableFromDate,
+                reservableToDate,
+                allowedWeekdaysMask,
+                allowedStartMinute,
+                allowedEndMinute));
+        step.updateReservableConstraints(
+                normalized.getReservableFromDate(),
+                normalized.getReservableToDate(),
+                normalized.getAllowedWeekdaysMask(),
+                normalized.getAllowedStartMinute(),
+                normalized.getAllowedEndMinute());
+        stepRepo.save(step);
+    }
+
+    @Transactional
+    public FlowStep appendStepWithPreviousDefaults(Long flowId, Long participantId) {
+        Flow flow = getFlow(flowId);
+        Participant participant = participantRepo.findById(participantId)
+                .orElseThrow(() -> new IllegalArgumentException("参加者が見つかりません。participantId=" + participantId));
+        if (!"USER".equals(participant.getParticipantType())) {
+            throw new IllegalArgumentException("参加者として設定できない種別です。participantId=" + participantId);
+        }
+
+        List<FlowStep> steps = stepRepo.findByFlowIdOrderByStepOrder(flowId);
+        int nextOrder = steps.isEmpty() ? 1 : steps.get(steps.size() - 1).getStepOrder() + 1;
+
+        FlowStep next = new FlowStep(flowId, nextOrder, participant.getId(), participant.getDisplayName());
+        if (!steps.isEmpty()) {
+            FlowStep previous = steps.get(steps.size() - 1);
+            next.copyReservableConstraintsFrom(previous);
+        }
+        if (steps.isEmpty()) {
+            next.activate();
+            flow.moveToStep(1);
+        }
+        FlowStep saved = stepRepo.save(next);
+
+        flow.resetStepCycleSize(nextOrder);
+        flowRepo.save(flow);
+        return saved;
     }
 
     public List<Flow> listFlows(String status, String keyword, String sort) {
@@ -611,6 +753,7 @@ public class FlowService {
                     nextStepOrder,
                     templateStep.getParticipantId(),
                     templateStep.getParticipantName());
+            next.copyReservableConstraintsFrom(templateStep);
             next = stepRepo.save(next);
         }
 
@@ -1045,6 +1188,43 @@ public class FlowService {
         if (target.isBefore(minDate) || target.isAfter(maxDate)) {
             throw new IllegalArgumentException(label + "\u306f\u7fcc\u65e5\u304b\u30893\u30f6\u6708\u4ee5\u5185\u3067\u6307\u5b9a\u3057\u3066\u304f\u3060\u3055\u3044\u3002value=" + dateTime);
         }
+    }
+
+    private StepCreationSpec normalizeStepCreationSpec(StepCreationSpec spec) {
+        if (spec == null || spec.getParticipantId() == null) {
+            throw new IllegalArgumentException("participantId is required for each step.");
+        }
+
+        LocalDate fromDate = spec.getReservableFromDate();
+        LocalDate toDate = spec.getReservableToDate();
+        if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+            throw new IllegalArgumentException("Step reservable date range is invalid. from=" + fromDate + ", to=" + toDate);
+        }
+
+        int weekdaysMask = spec.getAllowedWeekdaysMask() == null ? ALL_WEEKDAYS_MASK : spec.getAllowedWeekdaysMask();
+        int startMinute = spec.getAllowedStartMinute() == null ? 0 : spec.getAllowedStartMinute();
+        int endMinute = spec.getAllowedEndMinute() == null ? 1440 : spec.getAllowedEndMinute();
+
+        if (weekdaysMask < 1 || weekdaysMask > ALL_WEEKDAYS_MASK) {
+            throw new IllegalArgumentException("Step allowedWeekdaysMask must be between 1 and 127. value=" + weekdaysMask);
+        }
+        if (startMinute < 0 || startMinute > 1439) {
+            throw new IllegalArgumentException("Step allowedStartMinute must be between 0 and 1439. value=" + startMinute);
+        }
+        if (endMinute < 1 || endMinute > 1440) {
+            throw new IllegalArgumentException("Step allowedEndMinute must be between 1 and 1440. value=" + endMinute);
+        }
+        if (startMinute >= endMinute) {
+            throw new IllegalArgumentException("Step time window is invalid. startMinute=" + startMinute + ", endMinute=" + endMinute);
+        }
+
+        return new StepCreationSpec(
+                spec.getParticipantId(),
+                fromDate,
+                toDate,
+                weekdaysMask,
+                startMinute,
+                endMinute);
     }
 
     private void assertWithinStepReservableWindow(

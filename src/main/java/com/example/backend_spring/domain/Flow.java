@@ -100,6 +100,13 @@ public class Flow {
         }
     }
 
+    public void resetStepCycleSize(int stepCycleSize) {
+        if (stepCycleSize < 1) {
+            throw new IllegalArgumentException("stepCycleSize must be >= 1");
+        }
+        this.stepCycleSize = stepCycleSize;
+    }
+
     public void markDone() {
         this.status = "DONE";
     }
