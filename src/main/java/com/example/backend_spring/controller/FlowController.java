@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -106,6 +107,12 @@ public class FlowController {
             @RequestParam String title,
             @RequestParam(required = false, defaultValue = "60") int durationMinutes,
             @RequestParam(required = false) List<Long> participantUserIds,
+            @RequestParam(required = false) List<Long> stepParticipantIds,
+            @RequestParam(required = false) List<String> stepReservableFromDates,
+            @RequestParam(required = false) List<String> stepReservableToDates,
+            @RequestParam(required = false) List<Integer> stepAllowedWeekdayMasks,
+            @RequestParam(required = false) List<Integer> stepAllowedStartMinutes,
+            @RequestParam(required = false) List<Integer> stepAllowedEndMinutes,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String startTime,
             Principal principal,
@@ -118,6 +125,19 @@ public class FlowController {
             }
 
             List<Long> selectedParticipantIds = participantUserIds == null ? List.of() : participantUserIds;
+            List<FlowService.StepCreationSpec> stepSpecs = buildStepCreationSpecs(
+                    stepParticipantIds,
+                    stepReservableFromDates,
+                    stepReservableToDates,
+                    stepAllowedWeekdayMasks,
+                    stepAllowedStartMinutes,
+                    stepAllowedEndMinutes);
+            if (stepSpecs.isEmpty()) {
+                stepSpecs = selectedParticipantIds.stream()
+                        .filter(id -> id != null)
+                        .map(id -> new FlowService.StepCreationSpec(id, null, null, 127, 0, 1440))
+                        .collect(Collectors.toList());
+            }
 
             Long createdByUserId = null;
             if (principal != null) {
@@ -126,13 +146,24 @@ public class FlowController {
                         .orElse(null);
             }
 
-            Long flowId = flowService.createFlow(
-                    title,
-                    durationMinutes,
-                    start,
-                    createdByUserId,
-                    selectedParticipantIds,
-                    List.of());
+            Long flowId;
+            if (stepParticipantIds != null && !stepParticipantIds.isEmpty()) {
+                flowId = flowService.createFlowWithStepSpecs(
+                        title,
+                        durationMinutes,
+                        start,
+                        createdByUserId,
+                        stepSpecs,
+                        List.of());
+            } else {
+                flowId = flowService.createFlow(
+                        title,
+                        durationMinutes,
+                        start,
+                        createdByUserId,
+                        selectedParticipantIds,
+                        List.of());
+            }
             return "redirect:/flows/" + flowId;
         } catch (IllegalArgumentException ex) {
             redirectAttributes.addFlashAttribute("error", ex.getMessage());
@@ -259,6 +290,48 @@ public class FlowController {
         return "redirect:/flows/" + id + "/edit";
     }
 
+    @PostMapping("/{id}/steps/{stepId}/constraints")
+    @PreAuthorize("@flowAuthorization.canManageFlow(#id, authentication)")
+    public String updateStepConstraints(
+            @PathVariable Long id,
+            @PathVariable Long stepId,
+            @RequestParam(required = false) String reservableFromDate,
+            @RequestParam(required = false) String reservableToDate,
+            @RequestParam(required = false, defaultValue = "127") Integer allowedWeekdaysMask,
+            @RequestParam(required = false, defaultValue = "0") Integer allowedStartMinute,
+            @RequestParam(required = false, defaultValue = "1440") Integer allowedEndMinute,
+            RedirectAttributes redirectAttributes) {
+        try {
+            flowService.updateStepReservableConstraints(
+                    id,
+                    stepId,
+                    parseOptionalDateStrict(reservableFromDate),
+                    parseOptionalDateStrict(reservableToDate),
+                    allowedWeekdaysMask,
+                    allowedStartMinute,
+                    allowedEndMinute);
+            redirectAttributes.addFlashAttribute("message", "ステップ予約制約を更新しました。");
+        } catch (IllegalArgumentException ex) {
+            redirectAttributes.addFlashAttribute("error", ex.getMessage());
+        }
+        return "redirect:/flows/" + id + "/edit";
+    }
+
+    @PostMapping("/{id}/steps")
+    @PreAuthorize("@flowAuthorization.canManageFlow(#id, authentication)")
+    public String addStep(
+            @PathVariable Long id,
+            @RequestParam Long participantId,
+            RedirectAttributes redirectAttributes) {
+        try {
+            flowService.appendStepWithPreviousDefaults(id, participantId);
+            redirectAttributes.addFlashAttribute("message", "ステップを追加しました。");
+        } catch (IllegalArgumentException ex) {
+            redirectAttributes.addFlashAttribute("error", ex.getMessage());
+        }
+        return "redirect:/flows/" + id + "/edit";
+    }
+
     @PostMapping("/{id}/delete")
     @PreAuthorize("@flowAuthorization.canManageFlow(#id, authentication)")
     public String delete(@PathVariable Long id, RedirectAttributes redirectAttributes) {
@@ -343,6 +416,54 @@ public class FlowController {
         } catch (DateTimeParseException ex) {
             throw new IllegalArgumentException("設定日付または設定時間の形式が不正です。");
         }
+    }
+
+    private LocalDate parseOptionalDateStrict(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(text);
+        } catch (DateTimeParseException ex) {
+            throw new IllegalArgumentException("日付形式が不正です。value=" + text);
+        }
+    }
+
+    private List<FlowService.StepCreationSpec> buildStepCreationSpecs(
+            List<Long> stepParticipantIds,
+            List<String> fromDates,
+            List<String> toDates,
+            List<Integer> weekdayMasks,
+            List<Integer> startMinutes,
+            List<Integer> endMinutes) {
+        if (stepParticipantIds == null || stepParticipantIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<FlowService.StepCreationSpec> specs = new ArrayList<>();
+        for (int i = 0; i < stepParticipantIds.size(); i++) {
+            Long participantId = stepParticipantIds.get(i);
+            LocalDate fromDate = parseOptionalDateStrict(getAt(fromDates, i));
+            LocalDate toDate = parseOptionalDateStrict(getAt(toDates, i));
+            Integer weekdayMask = getAt(weekdayMasks, i);
+            Integer startMinute = getAt(startMinutes, i);
+            Integer endMinute = getAt(endMinutes, i);
+            specs.add(new FlowService.StepCreationSpec(
+                    participantId,
+                    fromDate,
+                    toDate,
+                    weekdayMask,
+                    startMinute,
+                    endMinute));
+        }
+        return specs;
+    }
+
+    private <T> T getAt(List<T> values, int index) {
+        if (values == null || index < 0 || index >= values.size()) {
+            return null;
+        }
+        return values.get(index);
     }
 
     private List<Participant> loadUserParticipants() {
